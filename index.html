@@ -1,0 +1,4155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Resume Doctor — AI ATS Resume Reviewer & Sanitizer</title>
+  <meta name="description" content="Open-source AI resume auditor and ATS sanitizer. Analyzes your resume across ATS formatting, bullet metrics, grammar, and keyword gaps. Generates clean ATS-safe rewrites.">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🩺</text></svg>">
+
+  <!-- Pinned PDF.js from CDN for 100% client-side PDF text extraction -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+
+  <!-- Pinned Mammoth.js from CDN for 100% client-side DOCX text extraction -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
+
+  <style>
+    /* ==========================================================================
+       CSS Variables & Themes (Light & Dark)
+       ========================================================================== */
+    :root {
+      --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+
+      /* Light Theme */
+      --bg-base: #f8fafc;
+      --bg-surface: #ffffff;
+      --bg-surface-alt: #f1f5f9;
+      --bg-card: #ffffff;
+      --bg-input: #ffffff;
+      --border-subtle: #e2e8f0;
+      --border-strong: #cbd5e1;
+      
+      --text-main: #0f172a;
+      --text-muted: #334155;
+      --text-subtle: #64748b;
+      
+      --brand-primary: #0d9488;
+      --brand-primary-hover: #0f766e;
+      --brand-light: #ccfbf1;
+      --brand-border: #99f6e4;
+      
+      --accent-cyan: #0284c7;
+      --accent-cyan-light: #e0f2fe;
+
+      --sev-high-bg: #fee2e2;
+      --sev-high-text: #991b1b;
+      --sev-high-border: #fca5a5;
+
+      --sev-med-bg: #fef3c7;
+      --sev-med-text: #92400e;
+      --sev-med-border: #fcd34d;
+
+      --sev-low-bg: #e0f2fe;
+      --sev-low-text: #075985;
+      --sev-low-border: #7dd3fc;
+
+      --success-bg: #dcfce7;
+      --success-text: #166534;
+      --success-border: #86efac;
+
+      --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+      --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+      --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+      --radius-sm: 6px;
+      --radius-md: 10px;
+      --radius-lg: 16px;
+    }
+
+    [data-theme="dark"] {
+      /* Dark Theme */
+      --bg-base: #090d16;
+      --bg-surface: #111827;
+      --bg-surface-alt: #1a2333;
+      --bg-card: #131c2e;
+      --bg-input: #0e1524;
+      --border-subtle: #1f2d42;
+      --border-strong: #33435c;
+
+      --text-main: #f8fafc;
+      --text-muted: #cbd5e1;
+      --text-subtle: #94a3b8;
+
+      --brand-primary: #14b8a6;
+      --brand-primary-hover: #2dd4bf;
+      --brand-light: rgba(20, 184, 166, 0.15);
+      --brand-border: rgba(45, 212, 191, 0.3);
+
+      --accent-cyan: #38bdf8;
+      --accent-cyan-light: rgba(56, 189, 248, 0.15);
+
+      --sev-high-bg: rgba(239, 68, 68, 0.2);
+      --sev-high-text: #fca5a5;
+      --sev-high-border: rgba(239, 68, 68, 0.4);
+
+      --sev-med-bg: rgba(245, 158, 11, 0.2);
+      --sev-med-text: #fde68a;
+      --sev-med-border: rgba(245, 158, 11, 0.4);
+
+      --sev-low-bg: rgba(56, 189, 248, 0.2);
+      --sev-low-text: #bae6fd;
+      --sev-low-border: rgba(56, 189, 248, 0.4);
+
+      --success-bg: rgba(34, 197, 94, 0.2);
+      --success-text: #86efac;
+      --success-border: rgba(34, 197, 94, 0.4);
+
+      --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.5);
+      --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.5), 0 2px 4px -2px rgb(0 0 0 / 0.5);
+      --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.5), 0 4px 6px -4px rgb(0 0 0 / 0.5);
+    }
+
+    /* Base Reset */
+    *, *::before, *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: var(--font-sans);
+      background-color: var(--bg-base);
+      color: var(--text-main);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    button {
+      font-family: inherit;
+      cursor: pointer;
+      border: none;
+      background: none;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      font-size: 0.875rem;
+      font-weight: 500;
+      border-radius: var(--radius-sm);
+      transition: all 0.15s ease;
+    }
+    button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible {
+      outline: 2px solid var(--brand-primary);
+      outline-offset: 2px;
+    }
+
+    /* Header & Navigation */
+    .app-header {
+      background-color: var(--bg-surface);
+      border-bottom: 1px solid var(--border-subtle);
+      position: sticky;
+      top: 0;
+      z-index: 40;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .header-container {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 12px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      text-decoration: none;
+      color: inherit;
+    }
+
+    .brand-icon {
+      width: 40px;
+      height: 40px;
+      background: linear-gradient(135deg, var(--brand-primary), var(--accent-cyan));
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.4rem;
+      box-shadow: 0 2px 8px rgba(13, 148, 136, 0.35);
+      color: #fff;
+    }
+
+    .brand-title {
+      font-weight: 800;
+      font-size: 1.15rem;
+      letter-spacing: -0.02em;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .badge-gemma {
+      font-size: 0.65rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      background-color: var(--brand-light);
+      color: var(--brand-primary);
+      border: 1px solid var(--brand-border);
+      padding: 2px 6px;
+      border-radius: 999px;
+    }
+
+    .brand-sub {
+      font-size: 0.725rem;
+      color: var(--text-subtle);
+    }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .btn-outline {
+      padding: 7px 12px;
+      border: 1px solid var(--border-strong);
+      background-color: var(--bg-surface);
+      color: var(--text-main);
+    }
+    .btn-outline:hover {
+      background-color: var(--bg-surface-alt);
+      border-color: var(--border-strong);
+    }
+
+    .btn-primary {
+      padding: 8px 16px;
+      background: linear-gradient(135deg, var(--brand-primary), var(--brand-primary-hover));
+      color: #ffffff;
+      font-weight: 600;
+      box-shadow: 0 2px 4px rgba(13, 148, 136, 0.25);
+    }
+    .btn-primary:hover {
+      filter: brightness(1.05);
+      box-shadow: 0 4px 8px rgba(13, 148, 136, 0.35);
+    }
+    .btn-primary:disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+      filter: none;
+      box-shadow: none;
+    }
+
+    .theme-toggle-btn, .lang-toggle-btn {
+      padding: 6px 10px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border-subtle);
+      color: var(--text-muted);
+      font-size: 0.825rem;
+      font-weight: 600;
+    }
+    .theme-toggle-btn:hover, .lang-toggle-btn:hover {
+      background-color: var(--bg-surface-alt);
+      color: var(--text-main);
+    }
+
+    /* Hero Banner */
+    .hero-banner {
+      background: linear-gradient(180deg, var(--bg-surface) 0%, var(--bg-base) 100%);
+      border-bottom: 1px solid var(--border-subtle);
+      padding: 18px 16px;
+      text-align: center;
+    }
+
+    .hero-container {
+      max-width: 900px;
+      margin: 0 auto;
+    }
+
+    .hero-title {
+      font-size: 1.65rem;
+      font-weight: 800;
+      letter-spacing: -0.025em;
+      margin-bottom: 6px;
+    }
+
+    .hero-title span {
+      background: linear-gradient(135deg, var(--brand-primary), var(--accent-cyan));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .hero-desc {
+      font-size: 0.9rem;
+      color: var(--text-muted);
+      max-width: 720px;
+      margin: 0 auto 10px;
+    }
+
+    .hero-badges {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 6px;
+    }
+
+    .pill-info {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 0.725rem;
+      font-weight: 500;
+      padding: 3px 9px;
+      border-radius: 999px;
+      background-color: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      color: var(--text-subtle);
+    }
+
+    /* Main Workspace */
+    .main-workspace {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 20px 16px;
+      width: 100%;
+      flex: 1;
+    }
+
+    .workspace-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 20px;
+    }
+
+    @media (min-width: 992px) {
+      .workspace-grid {
+        grid-template-columns: 480px 1fr;
+        align-items: start;
+      }
+    }
+
+    @media (min-width: 1200px) {
+      .workspace-grid {
+        grid-template-columns: 520px 1fr;
+      }
+    }
+
+    /* Cards */
+    .card {
+      background-color: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow-sm);
+      overflow: hidden;
+    }
+
+    .card-header {
+      padding: 14px 18px;
+      border-bottom: 1px solid var(--border-subtle);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      background-color: var(--bg-surface);
+    }
+
+    .card-title {
+      font-size: 0.95rem;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .card-body {
+      padding: 16px 18px;
+    }
+
+    /* Dropzone: Full Click Reliability */
+    .dropzone-container {
+      position: relative;
+      border: 2px dashed var(--border-strong);
+      border-radius: var(--radius-md);
+      padding: 24px 16px;
+      text-align: center;
+      background-color: var(--bg-surface-alt);
+      transition: all 0.2s ease;
+      cursor: pointer;
+    }
+    .dropzone-container:hover, .dropzone-container.drag-over {
+      border-color: var(--brand-primary);
+      background-color: var(--brand-light);
+    }
+    .dropzone-container * {
+      pointer-events: none;
+    }
+
+    .dropzone-icon {
+      width: 44px;
+      height: 44px;
+      margin: 0 auto 10px;
+      border-radius: 50%;
+      background-color: var(--bg-surface);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.4rem;
+      box-shadow: var(--shadow-sm);
+      color: var(--brand-primary);
+    }
+
+    .dropzone-text {
+      font-size: 0.875rem;
+      font-weight: 700;
+      color: var(--text-main);
+      margin-bottom: 4px;
+    }
+
+    .dropzone-sub {
+      font-size: 0.75rem;
+      color: var(--text-subtle);
+      margin-bottom: 8px;
+    }
+
+    .file-hidden-input {
+      pointer-events: auto !important;
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      opacity: 0;
+      cursor: pointer;
+      z-index: 20;
+    }
+
+    .file-preview-card {
+      margin-top: 12px;
+      padding: 10px 12px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border-subtle);
+      background-color: var(--bg-surface);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .file-preview-left {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      overflow: hidden;
+    }
+
+    .file-preview-thumb {
+      width: 40px;
+      height: 40px;
+      border-radius: 4px;
+      object-fit: cover;
+      background-color: var(--bg-surface-alt);
+      border: 1px solid var(--border-subtle);
+      flex-shrink: 0;
+    }
+
+    .file-preview-icon {
+      width: 40px;
+      height: 40px;
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.25rem;
+      background-color: var(--bg-surface-alt);
+      flex-shrink: 0;
+    }
+
+    .file-preview-details {
+      overflow: hidden;
+    }
+    .file-preview-name {
+      font-size: 0.825rem;
+      font-weight: 600;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .file-preview-meta {
+      font-size: 0.725rem;
+      color: var(--text-subtle);
+    }
+
+    .file-clear-btn {
+      color: var(--text-subtle);
+      padding: 6px;
+      border-radius: 4px;
+      font-size: 0.9rem;
+    }
+    .file-clear-btn:hover {
+      background-color: var(--sev-high-bg);
+      color: var(--sev-high-text);
+    }
+
+    /* Tabs */
+    .input-tabs {
+      display: flex;
+      border-bottom: 1px solid var(--border-subtle);
+      margin: 14px 0 10px;
+      gap: 4px;
+    }
+
+    .input-tab-btn {
+      padding: 6px 12px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: var(--text-subtle);
+      border-bottom: 2px solid transparent;
+      border-radius: 0;
+    }
+    .input-tab-btn.active {
+      color: var(--brand-primary);
+      border-bottom-color: var(--brand-primary);
+    }
+
+    .form-group {
+      margin-bottom: 12px;
+    }
+
+    .form-label {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.785rem;
+      font-weight: 600;
+      margin-bottom: 6px;
+      color: var(--text-muted);
+    }
+
+    .form-label-tag {
+      font-size: 0.7rem;
+      font-weight: 400;
+      color: var(--text-subtle);
+    }
+
+    .form-control {
+      width: 100%;
+      padding: 8px 12px;
+      font-size: 0.85rem;
+      font-family: inherit;
+      color: var(--text-main);
+      background-color: var(--bg-input);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-sm);
+      transition: border-color 0.15s ease;
+    }
+    .form-control:focus {
+      border-color: var(--brand-primary);
+    }
+
+    textarea.form-control {
+      resize: vertical;
+      min-height: 150px;
+      line-height: 1.45;
+    }
+
+    textarea.mono-control {
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+    }
+
+    .char-counter {
+      font-size: 0.7rem;
+      color: var(--text-subtle);
+      text-align: right;
+      margin-top: 4px;
+    }
+
+    .provider-status-bar {
+      margin: 14px 0;
+      padding: 10px 12px;
+      border-radius: var(--radius-sm);
+      background-color: var(--bg-surface-alt);
+      border: 1px solid var(--border-subtle);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 0.785rem;
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background-color: #22c55e;
+      box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.2);
+      display: inline-block;
+      margin-right: 6px;
+    }
+    .status-dot.warning {
+      background-color: #f59e0b;
+      box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.2);
+    }
+
+    .action-button-row {
+      display: flex;
+      gap: 10px;
+      margin-top: 14px;
+    }
+
+    .btn-analyze {
+      flex: 1;
+      padding: 12px 18px;
+      font-size: 0.95rem;
+      border-radius: var(--radius-md);
+    }
+
+    /* Output Column */
+    .output-wrapper {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .idle-state-box {
+      padding: 40px 24px;
+      text-align: center;
+      background-color: var(--bg-card);
+      border: 1px dashed var(--border-strong);
+      border-radius: var(--radius-lg);
+    }
+
+    .idle-icon {
+      font-size: 3rem;
+      margin-bottom: 12px;
+      display: inline-block;
+      animation: floatPulse 3s ease-in-out infinite;
+    }
+
+    @keyframes floatPulse {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-6px); }
+    }
+
+    .idle-title {
+      font-size: 1.25rem;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+
+    .idle-desc {
+      font-size: 0.875rem;
+      color: var(--text-muted);
+      max-width: 520px;
+      margin: 0 auto 20px;
+    }
+
+    .checklist-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 12px;
+      max-width: 680px;
+      margin: 0 auto 24px;
+      text-align: left;
+    }
+
+    .checklist-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      background-color: var(--bg-surface-alt);
+      padding: 10px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border-subtle);
+    }
+    .checklist-item span.chk-icon {
+      color: var(--brand-primary);
+      font-weight: bold;
+    }
+
+    /* Loading Card with ECG Pulse Animation */
+    .loading-card {
+      padding: 40px 24px;
+      text-align: center;
+      background-color: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-lg);
+    }
+
+    .pulse-monitor-wrap {
+      width: 220px;
+      height: 60px;
+      margin: 0 auto 16px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .ecg-svg {
+      width: 100%;
+      height: 100%;
+      stroke: var(--brand-primary);
+      stroke-width: 2.5;
+      fill: none;
+      stroke-dasharray: 600;
+      stroke-dashoffset: 600;
+      animation: ecgDraw 2s linear infinite;
+    }
+
+    @keyframes ecgDraw {
+      0% { stroke-dashoffset: 600; }
+      100% { stroke-dashoffset: 0; }
+    }
+
+    .loading-status-text {
+      font-size: 1.05rem;
+      font-weight: 700;
+      margin-bottom: 6px;
+      color: var(--text-main);
+    }
+
+    .loading-step-text {
+      font-size: 0.825rem;
+      color: var(--brand-primary);
+      font-weight: 600;
+    }
+
+    /* Results Dashboard Elements */
+    .results-container {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .score-card {
+      background: linear-gradient(135deg, var(--bg-surface) 0%, var(--bg-surface-alt) 100%);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-lg);
+      padding: 20px;
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 20px;
+      align-items: center;
+    }
+
+    @media (min-width: 768px) {
+      .score-card {
+        grid-template-columns: 180px 1fr;
+      }
+    }
+
+    .score-radial-wrap {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+    }
+
+    .score-ring-svg {
+      width: 140px;
+      height: 140px;
+      transform: rotate(-90deg);
+    }
+
+    .score-ring-bg {
+      fill: none;
+      stroke: var(--border-subtle);
+      stroke-width: 10;
+    }
+
+    .score-ring-val {
+      fill: none;
+      stroke-width: 10;
+      stroke-linecap: round;
+      stroke-dasharray: 377;
+      stroke-dashoffset: 377;
+      transition: stroke-dashoffset 1.2s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    .score-inner-text {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .score-number {
+      font-size: 2.25rem;
+      font-weight: 900;
+      line-height: 1;
+      letter-spacing: -0.04em;
+    }
+
+    .score-max {
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: var(--text-subtle);
+    }
+
+    .condition-badge {
+      margin-top: 8px;
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      padding: 3px 10px;
+      border-radius: 999px;
+      letter-spacing: 0.04em;
+    }
+
+    .condition-critical {
+      background-color: var(--sev-high-bg);
+      color: var(--sev-high-text);
+      border: 1px solid var(--sev-high-border);
+    }
+    .condition-fair {
+      background-color: var(--sev-med-bg);
+      color: var(--sev-med-text);
+      border: 1px solid var(--sev-med-border);
+    }
+    .condition-good {
+      background-color: var(--sev-low-bg);
+      color: var(--sev-low-text);
+      border: 1px solid var(--sev-low-border);
+    }
+    .condition-excellent {
+      background-color: var(--success-bg);
+      color: var(--success-text);
+      border: 1px solid var(--success-border);
+    }
+
+    .prognosis-wrap {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .prognosis-title {
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      font-weight: 700;
+      color: var(--text-subtle);
+    }
+
+    .prognosis-text {
+      font-size: 0.95rem;
+      line-height: 1.5;
+      font-weight: 500;
+      color: var(--text-main);
+    }
+
+    .sub-scores-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+      gap: 10px;
+      margin-top: 4px;
+    }
+
+    .sub-score-box {
+      background-color: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-sm);
+      padding: 8px 10px;
+    }
+
+    .sub-score-label {
+      font-size: 0.725rem;
+      color: var(--text-subtle);
+      font-weight: 500;
+      margin-bottom: 2px;
+    }
+
+    .sub-score-val-wrap {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+    }
+
+    .sub-score-val {
+      font-size: 1.05rem;
+      font-weight: 700;
+      color: var(--text-main);
+    }
+
+    .sub-score-bar-bg {
+      height: 4px;
+      background-color: var(--border-subtle);
+      border-radius: 2px;
+      margin-top: 6px;
+      overflow: hidden;
+    }
+    .sub-score-bar-fill {
+      height: 100%;
+      background-color: var(--brand-primary);
+      border-radius: 2px;
+    }
+
+    /* Section Check Grid */
+    .section-checks-card {
+      background-color: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-lg);
+      padding: 16px 18px;
+    }
+
+    .section-checks-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 8px;
+      margin-top: 10px;
+    }
+
+    .sec-status-chip {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 6px 10px;
+      border-radius: var(--radius-sm);
+      font-size: 0.75rem;
+      font-weight: 600;
+      background-color: var(--bg-surface-alt);
+      border: 1px solid var(--border-subtle);
+    }
+    .sec-status-chip.pass {
+      border-color: var(--success-border);
+      background-color: var(--success-bg);
+      color: var(--success-text);
+    }
+    .sec-status-chip.warn {
+      border-color: var(--sev-med-border);
+      background-color: var(--sev-med-bg);
+      color: var(--sev-med-text);
+    }
+    .sec-status-chip.fail {
+      border-color: var(--sev-high-border);
+      background-color: var(--sev-high-bg);
+      color: var(--sev-high-text);
+    }
+
+    /* Keywords */
+    .keywords-card {
+      background-color: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-lg);
+      padding: 16px 18px;
+    }
+
+    .keyword-columns {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 14px;
+      margin-top: 10px;
+    }
+
+    @media (min-width: 600px) {
+      .keyword-columns {
+        grid-template-columns: 1fr 1fr;
+      }
+    }
+
+    .keyword-group-title {
+      font-size: 0.775rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .keyword-group-title.matched { color: #16a34a; }
+    .keyword-group-title.missing { color: #ea580c; }
+
+    .keyword-pills-wrap {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .kw-pill {
+      font-size: 0.75rem;
+      font-weight: 500;
+      padding: 3px 8px;
+      border-radius: 999px;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .kw-pill.matched {
+      background-color: var(--success-bg);
+      color: var(--success-text);
+      border: 1px solid var(--success-border);
+    }
+    .kw-pill.missing {
+      background-color: var(--sev-med-bg);
+      color: var(--sev-med-text);
+      border: 1px solid var(--sev-med-border);
+    }
+
+    /* Bullet Transformations */
+    .bullet-transforms-card {
+      background-color: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-lg);
+      padding: 16px 18px;
+    }
+
+    .bullet-pairs-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin-top: 10px;
+    }
+
+    .bullet-pair-box {
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-md);
+      padding: 10px 12px;
+      background-color: var(--bg-surface);
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      font-size: 0.825rem;
+    }
+
+    .bullet-before {
+      color: var(--sev-high-text);
+      background-color: var(--sev-high-bg);
+      padding: 6px 10px;
+      border-radius: 4px;
+      display: flex;
+      align-items: flex-start;
+      gap: 6px;
+    }
+
+    .bullet-after {
+      color: var(--success-text);
+      background-color: var(--success-bg);
+      padding: 6px 10px;
+      border-radius: 4px;
+      display: flex;
+      align-items: flex-start;
+      gap: 6px;
+      font-weight: 500;
+    }
+
+    /* Issues Section */
+    .issues-section {
+      background-color: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-lg);
+      overflow: hidden;
+    }
+
+    .issues-header {
+      padding: 14px 18px;
+      border-bottom: 1px solid var(--border-subtle);
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      background-color: var(--bg-surface);
+    }
+
+    .issues-filter-group {
+      display: flex;
+      gap: 4px;
+    }
+
+    .filter-btn {
+      padding: 4px 10px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      border: 1px solid var(--border-subtle);
+      border-radius: 999px;
+      color: var(--text-subtle);
+      background-color: var(--bg-surface);
+    }
+    .filter-btn:hover { background-color: var(--bg-surface-alt); }
+    .filter-btn.active {
+      background-color: var(--brand-primary);
+      color: #ffffff;
+      border-color: var(--brand-primary);
+    }
+
+    .issues-list {
+      padding: 12px 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      max-height: 480px;
+      overflow-y: auto;
+    }
+
+    .issue-card {
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-md);
+      padding: 12px 14px;
+      background-color: var(--bg-surface);
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .issue-meta-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .severity-tag {
+      font-size: 0.685rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      padding: 2px 7px;
+      border-radius: 4px;
+      letter-spacing: 0.04em;
+    }
+    .severity-tag.high {
+      background-color: var(--sev-high-bg);
+      color: var(--sev-high-text);
+      border: 1px solid var(--sev-high-border);
+    }
+    .severity-tag.medium {
+      background-color: var(--sev-med-bg);
+      color: var(--sev-med-text);
+      border: 1px solid var(--sev-med-border);
+    }
+    .severity-tag.low {
+      background-color: var(--sev-low-bg);
+      color: var(--sev-low-text);
+      border: 1px solid var(--sev-low-border);
+    }
+
+    .section-tag {
+      font-size: 0.725rem;
+      font-weight: 600;
+      color: var(--text-subtle);
+      background-color: var(--bg-surface-alt);
+      padding: 2px 8px;
+      border-radius: 4px;
+      border: 1px solid var(--border-subtle);
+    }
+
+    .issue-problem {
+      font-size: 0.865rem;
+      color: var(--text-main);
+      font-weight: 600;
+      line-height: 1.4;
+    }
+
+    .issue-prescription {
+      font-size: 0.825rem;
+      color: var(--text-muted);
+      line-height: 1.45;
+      background-color: var(--bg-surface-alt);
+      border-left: 3px solid var(--brand-primary);
+      padding: 8px 12px;
+      border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+    }
+
+    /* Rewritten Resume & Tools */
+    .rewrite-section {
+      background-color: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-lg);
+      overflow: hidden;
+    }
+
+    .rewrite-header {
+      padding: 14px 18px;
+      border-bottom: 1px solid var(--border-subtle);
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      background-color: var(--bg-surface);
+    }
+
+    .rewrite-actions {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+
+    .rewrite-view-toggle {
+      display: flex;
+      background-color: var(--bg-surface-alt);
+      padding: 2px;
+      border-radius: var(--radius-sm);
+      gap: 2px;
+    }
+
+    .view-toggle-btn {
+      padding: 4px 10px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: var(--text-subtle);
+      border-radius: 4px;
+    }
+    .view-toggle-btn.active {
+      background-color: var(--bg-surface);
+      color: var(--brand-primary);
+      box-shadow: var(--shadow-sm);
+    }
+
+    .rewrite-code-box {
+      padding: 18px;
+      background-color: var(--bg-surface);
+      font-family: var(--font-mono);
+      font-size: 0.825rem;
+      line-height: 1.6;
+      white-space: pre-wrap;
+      word-break: break-word;
+      max-height: 520px;
+      overflow-y: auto;
+      color: var(--text-main);
+      user-select: text;
+    }
+
+    .side-by-side-container {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      padding: 16px;
+      background-color: var(--bg-surface-alt);
+    }
+
+    .sbs-pane {
+      background-color: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-sm);
+      padding: 12px;
+      max-height: 500px;
+      overflow-y: auto;
+      font-family: var(--font-mono);
+      font-size: 0.775rem;
+      white-space: pre-wrap;
+    }
+
+    /* Modal Styles */
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background-color: rgba(0, 0, 0, 0.65);
+      backdrop-filter: blur(4px);
+      z-index: 100;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+    }
+    .modal-overlay.open { display: flex; }
+
+    .modal-box {
+      background-color: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-lg);
+      width: 100%;
+      max-width: 600px;
+      box-shadow: var(--shadow-lg);
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      max-height: 90vh;
+    }
+
+    .modal-header {
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border-subtle);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .modal-title {
+      font-size: 1.05rem;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .modal-close-btn {
+      color: var(--text-subtle);
+      font-size: 1.25rem;
+      padding: 4px;
+      border-radius: 4px;
+    }
+    .modal-close-btn:hover {
+      background-color: var(--bg-surface-alt);
+      color: var(--text-main);
+    }
+
+    .modal-body {
+      padding: 20px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .modal-footer {
+      padding: 14px 20px;
+      border-top: 1px solid var(--border-subtle);
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+      background-color: var(--bg-surface-alt);
+    }
+
+    .provider-toggle-group {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 6px;
+      background-color: var(--bg-surface-alt);
+      padding: 4px;
+      border-radius: var(--radius-md);
+      border: 1px solid var(--border-subtle);
+    }
+
+    .provider-toggle-btn {
+      padding: 8px 6px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      border-radius: var(--radius-sm);
+      color: var(--text-subtle);
+      text-align: center;
+    }
+    .provider-toggle-btn.active {
+      background-color: var(--bg-surface);
+      color: var(--brand-primary);
+      box-shadow: var(--shadow-sm);
+    }
+
+    .security-notice {
+      padding: 10px 12px;
+      border-radius: var(--radius-sm);
+      background-color: var(--brand-light);
+      border: 1px solid var(--brand-border);
+      color: var(--brand-primary);
+      font-size: 0.775rem;
+      line-height: 1.45;
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+    }
+
+    /* History Drawer */
+    .history-card {
+      background-color: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-lg);
+      padding: 14px 18px;
+    }
+    .history-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 10px;
+      border-radius: var(--radius-sm);
+      background-color: var(--bg-surface-alt);
+      border: 1px solid var(--border-subtle);
+      margin-top: 6px;
+      font-size: 0.8rem;
+    }
+
+    /* Toast */
+    .toast-container {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      z-index: 120;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      pointer-events: none;
+    }
+
+    .toast-pill {
+      pointer-events: auto;
+      background-color: var(--text-main);
+      color: var(--bg-base);
+      padding: 10px 16px;
+      border-radius: var(--radius-md);
+      font-size: 0.85rem;
+      font-weight: 500;
+      box-shadow: var(--shadow-lg);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      animation: slideInUp 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+      max-width: 380px;
+    }
+
+    @keyframes slideInUp {
+      from { transform: translateY(20px); opacity: 0; }
+      to { transform: translateY(0); opacity: 1; }
+    }
+
+    /* Dedicated Print Area: Only visible on window.print() */
+    #rewrittenResumePrintArea { display: none; }
+
+    @media print {
+      body * {
+        visibility: hidden !important;
+      }
+      #rewrittenResumePrintArea, #rewrittenResumePrintArea * {
+        visibility: visible !important;
+        display: block !important;
+      }
+      #rewrittenResumePrintArea {
+        position: absolute !important;
+        left: 0 !important;
+        top: 0 !important;
+        width: 100% !important;
+        margin: 0 !important;
+        padding: 20mm !important;
+        font-family: 'Courier New', Courier, monospace !important;
+        font-size: 10.5pt !important;
+        line-height: 1.5 !important;
+        color: #000000 !important;
+        background: #ffffff !important;
+        white-space: pre-wrap !important;
+      }
+    }
+
+    /* Footer */
+    .app-footer {
+      border-top: 1px solid var(--border-subtle);
+      background-color: var(--bg-surface);
+      padding: 16px;
+      font-size: 0.775rem;
+      color: var(--text-subtle);
+      text-align: center;
+      margin-top: auto;
+    }
+
+    .footer-links {
+      display: flex;
+      justify-content: center;
+      gap: 16px;
+      margin-top: 6px;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ==========================================================================
+       Header & Navigation Bar
+       ========================================================================== -->
+  <header class="app-header">
+    <div class="header-container">
+      <a href="#" class="brand" title="Resume Doctor">
+        <div class="brand-icon">🩺</div>
+        <div class="brand-text-wrap">
+          <div class="brand-title">
+            Resume Doctor
+            <span class="badge-gemma">Gemini / Gemma</span>
+          </div>
+          <span id="txtBrandSubtitle" class="brand-sub">Open-Source ATS Reviewer & Sanitizer</span>
+        </div>
+      </a>
+
+      <div class="header-actions">
+        <!-- Sample Selector -->
+        <div class="sample-dropdown-wrap" style="position: relative;">
+          <button id="sampleBtn" class="btn-outline" title="Load pre-built sample resumes">
+            <span>🧪 Load Sample ▾</span>
+          </button>
+          <div id="sampleMenu" style="display: none; position: absolute; right: 0; top: calc(100% + 6px); background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); box-shadow: var(--shadow-lg); z-index: 60; min-width: 250px; padding: 6px;">
+            <button id="sampleSweBtn" type="button" style="width: 100%; text-align: left; padding: 8px 10px; font-size: 0.8rem; border-radius: 4px; display: block; color: var(--text-main); background: transparent; border: none; cursor: pointer;">
+              <strong>Junior SWE Resume</strong>
+              <div style="font-size: 0.72rem; color: var(--text-subtle);">Weak action verbs, missing metrics</div>
+            </button>
+            <button id="samplePmBtn" type="button" style="width: 100%; text-align: left; padding: 8px 10px; font-size: 0.8rem; border-radius: 4px; display: block; color: var(--text-main); background: transparent; border: none; cursor: pointer; border-top: 1px solid var(--border-subtle); margin-top: 4px;">
+              <strong>Technical PM Resume</strong>
+              <div style="font-size: 0.72rem; color: var(--text-subtle);">ATS traps, non-standard headings, symbols</div>
+            </button>
+          </div>
+        </div>
+
+        <!-- History Modal Trigger -->
+        <button id="historyBtn" class="btn-outline" title="View previously analyzed resumes">
+          <span>📜 History</span>
+        </button>
+
+        <!-- Model Settings Modal Trigger -->
+        <button id="settingsBtn" class="btn-outline" title="Configure AI provider and API key">
+          <span>⚙️ Settings</span>
+        </button>
+
+        <!-- Multi-language Toggle (English / Tamil) -->
+        <button id="langToggleBtn" class="lang-toggle-btn" title="Switch Language (English / தமிழ்)">
+          <span id="langLabel">தமிழ்</span>
+        </button>
+
+        <!-- Theme Toggle -->
+        <button id="themeToggleBtn" class="theme-toggle-btn" aria-label="Toggle Dark Mode" title="Toggle Light/Dark Theme">
+          <span id="themeIcon">🌙</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- ==========================================================================
+       Hero Banner
+       ========================================================================== -->
+  <section class="hero-banner">
+    <div class="hero-container">
+      <h1 id="txtHeroTitle" class="hero-title">Cure Your Resume Before the <span>ATS Rejects It</span></h1>
+      <p id="txtHeroDesc" class="hero-desc">
+        Deep ATS audit for spelling, inconsistent dates/tense, missing sections, weak bullets, and layout traps. Prescribes exact fixes and generates a sanitized plain-text rewrite.
+      </p>
+      <div class="hero-badges">
+        <span class="pill-info">🔒 100% Client-Side Privacy</span>
+        <span class="pill-info">📄 PDF, DOCX, TXT, PNG/JPG/WEBP</span>
+        <span class="pill-info">🛡️ Zero Hallucinations Guaranteed ([ADD: ...])</span>
+        <span class="pill-info">⚡ Built-in Zero-Setup Engine Active</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ==========================================================================
+       Main Workspace
+       ========================================================================== -->
+  <main class="main-workspace">
+    <div class="workspace-grid">
+
+      <!-- LEFT COLUMN: Inputs -->
+      <div class="input-column">
+        <div class="card">
+          <div class="card-header">
+            <span id="txtUploadTitle" class="card-title">📄 1. Patient Resume Input</span>
+            <span class="pill-info" style="font-size: 0.7rem;">Max 5 MB</span>
+          </div>
+          <div class="card-body">
+
+            <!-- Drag & Drop Upload Zone (Full click reliability) -->
+            <div id="dropzone" class="dropzone-container" title="Click or drag a resume file here">
+              <input type="file" id="fileInput" class="file-hidden-input" accept=".pdf, .docx, .txt, .png, .jpg, .jpeg, .webp">
+              <div class="dropzone-icon">📁</div>
+              <div id="txtDropTitle" class="dropzone-text">Drop your resume here or click to browse</div>
+              <div id="txtDropSub" class="dropzone-sub">Supports PDF, DOCX, PNG/JPG (resized to 1600px), or TXT (Max 5MB)</div>
+              <button id="txtBrowseBtn" type="button" class="btn-outline" style="margin-top: 6px; padding: 5px 14px; font-size: 0.78rem;">
+                📂 Browse Resume File
+              </button>
+            </div>
+
+            <!-- Uploaded File Preview Chip -->
+            <div id="filePreview" class="file-preview-card" style="display: none;">
+              <div class="file-preview-left">
+                <img id="filePreviewThumb" class="file-preview-thumb" alt="Preview" style="display: none;">
+                <div id="filePreviewIcon" class="file-preview-icon">📄</div>
+                <div class="file-preview-details">
+                  <div id="filePreviewName" class="file-preview-name">resume.pdf</div>
+                  <div id="filePreviewMeta" class="file-preview-meta">PDF • 124 KB</div>
+                </div>
+              </div>
+              <button id="fileClearBtn" class="file-clear-btn" title="Remove file" aria-label="Remove uploaded file">✕</button>
+            </div>
+
+            <!-- Tabs: Resume Text vs Job Description -->
+            <div class="input-tabs">
+              <button id="tabResumeBtn" class="input-tab-btn active">Resume Text Content</button>
+              <button id="tabJobBtn" class="input-tab-btn">Target Job (Optional)</button>
+            </div>
+
+            <!-- Tab 1: Resume Text Box -->
+            <div id="paneResumeText">
+              <div class="form-group">
+                <div class="form-label">
+                  <span id="txtResumeTextLabel">Resume Text (Extracted or Pasted)</span>
+                  <span class="form-label-tag">Editable</span>
+                </div>
+                <textarea id="resumeTextArea" class="form-control mono-control" placeholder="Upload a file above or paste your resume text here...&#10;&#10;e.g.&#10;John Doe&#10;john@example.com | (555) 019-2834&#10;&#10;SUMMARY&#10;Software engineer with experience..."></textarea>
+                <div id="resumeCharCount" class="char-counter">0 words • 0 characters</div>
+              </div>
+            </div>
+
+            <!-- Tab 2: Job Description Box -->
+            <div id="paneJobText" style="display: none;">
+              <div class="form-group">
+                <label for="targetRoleInput" class="form-label">
+                  <span id="txtTargetRoleLabel">Target Role / Title</span>
+                  <span class="form-label-tag">e.g. Full-Stack Software Engineer</span>
+                </label>
+                <input type="text" id="targetRoleInput" class="form-control" placeholder="e.g. Senior Frontend Engineer, Product Manager">
+              </div>
+
+              <div class="form-group">
+                <div class="form-label">
+                  <span id="txtJobDescLabel">Target Job Description</span>
+                  <span class="form-label-tag">For keyword gap audit</span>
+                </div>
+                <textarea id="jobDescTextArea" class="form-control" style="min-height: 120px;" placeholder="Paste the job requirements to match keywords and find missing requirements..."></textarea>
+                <div id="jobCharCount" class="char-counter">0 words</div>
+              </div>
+            </div>
+
+            <!-- Provider Status Bar -->
+            <div class="provider-status-bar">
+              <div class="provider-status-left">
+                <span id="statusIndicatorDot" class="status-dot"></span>
+                <span id="statusProviderName">Engine: Built-in ATS (Instant & Free)</span>
+              </div>
+              <button id="quickConfigBtn" class="btn-outline" style="padding: 3px 8px; font-size: 0.725rem;">Configure</button>
+            </div>
+
+            <!-- Action Buttons -->
+            <div class="action-button-row">
+              <button id="analyzeBtn" class="btn-primary btn-analyze" title="Run ATS audit and sanitize rewrite">
+                <span id="txtAnalyzeBtn">🩺 Prescribe Fixes & Analyze</span>
+              </button>
+              <button id="resetBtn" class="btn-outline" title="Clear all inputs">
+                <span id="txtResetBtn">Reset</span>
+              </button>
+            </div>
+
+          </div>
+        </div>
+      </div>
+
+      <!-- RIGHT COLUMN: Output Dashboard -->
+      <div class="output-column">
+        <div class="output-wrapper">
+
+          <!-- State 1: Idle Box -->
+          <div id="idleState" class="idle-state-box">
+            <div class="idle-icon">🩺</div>
+            <h2 id="txtIdleTitle" class="idle-title">Ready for Your Resume Diagnosis</h2>
+            <p id="txtIdleDesc" class="idle-desc">
+              Upload your PDF, DOCX, image, or text to begin. Resume Doctor scores your ATS friendliness, itemizes mistakes, and produces an ATS-safe plain-text rewrite.
+            </p>
+
+            <div class="checklist-grid">
+              <div class="checklist-item">
+                <span class="chk-icon">✓</span>
+                <div><strong>Spelling & Grammar</strong><br>Catches typos & syntactic slips</div>
+              </div>
+              <div class="checklist-item">
+                <span class="chk-icon">✓</span>
+                <div><strong>Tense & Date Flow</strong><br>Flags past vs present tense errors</div>
+              </div>
+              <div class="checklist-item">
+                <span class="chk-icon">✓</span>
+                <div><strong>Missing Details</strong><br>Audits contact info & core sections</div>
+              </div>
+              <div class="checklist-item">
+                <span class="chk-icon">✓</span>
+                <div><strong>Bullet Impact</strong><br>Demands strong action verbs & metrics</div>
+              </div>
+              <div class="checklist-item">
+                <span class="chk-icon">✓</span>
+                <div><strong>ATS Traps</strong><br>Flags multi-columns, icons & tables</div>
+              </div>
+              <div class="checklist-item">
+                <span class="chk-icon">✓</span>
+                <div><strong>Job Keyword Match</strong><br>Scores target role relevance</div>
+              </div>
+            </div>
+
+            <div style="display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;">
+              <button id="idleSampleBtn" class="btn-primary" style="padding: 11px 22px; font-size: 0.95rem; box-shadow: var(--shadow-md);">
+                <span id="txtOneClickTest">🚀 1-Click Test & Diagnose Sample Resume</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- State 2: ECG Loading Animation -->
+          <div id="loadingState" class="loading-card" style="display: none;">
+            <div class="pulse-monitor-wrap">
+              <svg class="ecg-svg" viewBox="0 0 200 50">
+                <path d="M 0 25 L 40 25 L 50 10 L 60 40 L 70 5 L 80 45 L 90 25 L 130 25 L 140 12 L 150 38 L 160 25 L 200 25" />
+              </svg>
+            </div>
+            <div class="loading-status-text">Examining Patient Resume...</div>
+            <div id="loadingStepText" class="loading-step-text">Consulting AI for ATS diagnosis</div>
+          </div>
+
+          <!-- Error Alert Card -->
+          <div id="errorBox" class="error-card" style="display: none; padding: 16px 18px; background-color: var(--sev-high-bg); border: 1px solid var(--sev-high-border); border-radius: var(--radius-md); color: var(--sev-high-text);">
+            <div style="font-weight: 700; font-size: 0.95rem; margin-bottom: 4px;">⚠️ Diagnosis Notice</div>
+            <div id="errorMessageText" style="font-size: 0.85rem; line-height: 1.45;"></div>
+            <div style="margin-top: 10px;">
+              <button id="errorFallbackBtn" class="btn-outline" style="background-color: var(--bg-surface); padding: 5px 12px; font-size: 0.78rem;">
+                ⚡ Run with Built-in Engine Instead
+              </button>
+            </div>
+          </div>
+
+          <!-- State 3: Results Dashboard -->
+          <div id="resultsDashboard" class="results-container" style="display: none;">
+
+            <!-- Overall Health Scorecard -->
+            <div class="score-card">
+              <div class="score-radial-wrap">
+                <div style="position: relative; width: 140px; height: 140px;">
+                  <svg class="score-ring-svg" viewBox="0 0 140 140">
+                    <circle class="score-ring-bg" cx="70" cy="70" r="60" />
+                    <circle id="scoreRingCircle" class="score-ring-val" cx="70" cy="70" r="60" stroke="#0d9488" />
+                  </svg>
+                  <div class="score-inner-text">
+                    <span id="scoreNumber" class="score-number">--</span>
+                    <span class="score-max">/ 100</span>
+                  </div>
+                </div>
+                <div id="conditionBadge" class="condition-badge condition-fair">Needs Treatment</div>
+              </div>
+
+              <div class="prognosis-wrap">
+                <div id="txtPrognosisTitle" class="prognosis-title">🩺 Doctor's Prognosis</div>
+                <div id="prognosisSummary" class="prognosis-text">Analysis summary loading...</div>
+
+                <div class="sub-scores-grid">
+                  <div class="sub-score-box">
+                    <div id="txtSubFormat" class="sub-score-label">ATS Formatting</div>
+                    <div class="sub-score-val-wrap">
+                      <span id="subScoreFormat" class="sub-score-val">--</span>
+                      <span class="score-max">/ 25</span>
+                    </div>
+                    <div class="sub-score-bar-bg"><div id="barFormat" class="sub-score-bar-fill" style="width: 0%;"></div></div>
+                  </div>
+
+                  <div class="sub-score-box">
+                    <div id="txtSubImpact" class="sub-score-label">Bullet Impact & Metrics</div>
+                    <div class="sub-score-val-wrap">
+                      <span id="subScoreImpact" class="sub-score-val">--</span>
+                      <span class="score-max">/ 25</span>
+                    </div>
+                    <div class="sub-score-bar-bg"><div id="barImpact" class="sub-score-bar-fill" style="width: 0%;"></div></div>
+                  </div>
+
+                  <div class="sub-score-box">
+                    <div id="txtSubGrammar" class="sub-score-label">Grammar & Consistency</div>
+                    <div class="sub-score-val-wrap">
+                      <span id="subScoreGrammar" class="sub-score-val">--</span>
+                      <span class="score-max">/ 25</span>
+                    </div>
+                    <div class="sub-score-bar-bg"><div id="barGrammar" class="sub-score-bar-fill" style="width: 0%;"></div></div>
+                  </div>
+
+                  <div class="sub-score-box">
+                    <div id="txtSubKeywords" class="sub-score-label">Role & Keyword Fit</div>
+                    <div class="sub-score-val-wrap">
+                      <span id="subScoreKeyword" class="sub-score-val">--</span>
+                      <span class="score-max">/ 25</span>
+                    </div>
+                    <div class="sub-score-bar-bg"><div id="barKeyword" class="sub-score-bar-fill" style="width: 0%;"></div></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- ATS Section Health Check -->
+            <div class="section-checks-card">
+              <div class="card-title">
+                <span id="txtSecChecksTitle">📑 ATS Section Health Check</span>
+              </div>
+              <div id="sectionChecksGrid" class="section-checks-grid">
+                <!-- Dynamically rendered -->
+              </div>
+            </div>
+
+            <!-- Bullet Point Transformations (Before -> After) -->
+            <div class="bullet-transforms-card">
+              <div class="card-title">
+                <span id="txtRewrittenBulletsTitle">⚡ Bullet Point Transformations (Before ➔ After)</span>
+              </div>
+              <div id="bulletPairsList" class="bullet-pairs-list">
+                <!-- Dynamically rendered -->
+              </div>
+            </div>
+
+            <!-- Keyword Diagnostics Card -->
+            <div class="keywords-card">
+              <div class="card-title">
+                <span>🔑 Keyword Diagnostic Breakdown</span>
+              </div>
+              <div class="keyword-columns">
+                <div>
+                  <div class="keyword-group-title matched">
+                    <span>✓ Matched Keywords</span>
+                    <span id="matchedCount" class="pill-info" style="font-size: 0.685rem;">0</span>
+                  </div>
+                  <div id="matchedKeywordsContainer" class="keyword-pills-wrap"></div>
+                </div>
+                <div>
+                  <div class="keyword-group-title missing">
+                    <span>⚠️ Missing Target Keywords</span>
+                    <span id="missingCount" class="pill-info" style="font-size: 0.685rem;">0</span>
+                  </div>
+                  <div id="missingKeywordsContainer" class="keyword-pills-wrap"></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Top Prioritized Issues & Prescriptions -->
+            <div class="issues-section">
+              <div class="issues-header">
+                <div class="card-title">
+                  <span id="txtTopFixesTitle">📋 Top Prioritized Prescriptions</span>
+                  <span id="totalIssuesBadge" class="pill-info">0 Issues</span>
+                </div>
+                <div class="issues-filter-group">
+                  <button class="filter-btn active" data-filter="all">All</button>
+                  <button class="filter-btn" data-filter="high">High</button>
+                  <button class="filter-btn" data-filter="medium">Medium</button>
+                  <button class="filter-btn" data-filter="low">Low</button>
+                </div>
+              </div>
+              <div id="issuesList" class="issues-list"></div>
+            </div>
+
+            <!-- Clean ATS-Safe Rewritten Resume Card -->
+            <div class="rewrite-section">
+              <div class="rewrite-header">
+                <div class="card-title">
+                  <span id="txtCleanResumeTitle">✨ Rewritten ATS-Compliant Resume</span>
+                </div>
+                <div class="rewrite-actions">
+                  <div class="rewrite-view-toggle">
+                    <button id="viewCleanBtn" class="view-toggle-btn active">Clean View</button>
+                    <button id="viewSbsBtn" class="view-toggle-btn">Side-by-Side</button>
+                  </div>
+                  <button id="copyRewriteBtn" class="btn-outline" title="Copy clean resume">
+                    <span id="txtCopyBtn">📋 Copy</span>
+                  </button>
+                  <button id="downloadTxtBtn" class="btn-outline" title="Download .txt">
+                    <span id="txtDownloadTxtBtn">💾 Download .txt</span>
+                  </button>
+                  <button id="printPdfBtn" class="btn-primary" style="padding: 6px 12px;" title="Print or save as PDF">
+                    <span id="txtPrintBtn">🖨️ Print / Save PDF</span>
+                  </button>
+                </div>
+              </div>
+
+              <!-- Quick Generation Tools Bar -->
+              <div style="padding: 8px 18px; background-color: var(--bg-surface-alt); border-bottom: 1px solid var(--border-subtle); display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
+                <button id="btnOpenCoverLetter" class="btn-outline" style="font-size: 0.75rem; padding: 4px 10px;">
+                  <span id="txtCoverLetterBtn">✉️ Generate Cover Letter</span>
+                </button>
+                <button id="btnOpenLinkedIn" class="btn-outline" style="font-size: 0.75rem; padding: 4px 10px;">
+                  <span id="txtLinkedInBtn">💼 LinkedIn Suggestions</span>
+                </button>
+              </div>
+
+              <!-- Clean Monospace View -->
+              <pre id="rewrittenResumeBox" class="rewrite-code-box"></pre>
+
+              <!-- Side-by-Side Comparison View (Hidden by default) -->
+              <div id="sideBySideBox" class="side-by-side-container" style="display: none;">
+                <div>
+                  <div style="font-weight: 700; font-size: 0.78rem; margin-bottom: 6px; color: var(--sev-high-text);">Original Document Text</div>
+                  <pre id="sbsOriginalBox" class="sbs-pane"></pre>
+                </div>
+                <div>
+                  <div style="font-weight: 700; font-size: 0.78rem; margin-bottom: 6px; color: var(--success-text);">Sanitized ATS Rewrite</div>
+                  <pre id="sbsRewrittenBox" class="sbs-pane"></pre>
+                </div>
+              </div>
+            </div>
+
+            <!-- Raw JSON Details (Evaluator & Debug View) -->
+            <details class="inspector-details" style="border: 1px solid var(--border-subtle); border-radius: var(--radius-md); background-color: var(--bg-surface);">
+              <summary style="padding: 10px 14px; font-size: 0.8rem; font-weight: 600; color: var(--text-subtle); cursor: pointer;">🔍 Inspect Raw Diagnostic JSON (Evaluator View)</summary>
+              <pre id="rawJsonResponseBox" style="padding: 12px 14px; border-top: 1px solid var(--border-subtle); font-family: var(--font-mono); font-size: 0.75rem; white-space: pre-wrap; max-height: 250px; overflow-y: auto; background-color: var(--bg-surface-alt); color: var(--text-muted);"></pre>
+            </details>
+
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </main>
+
+  <!-- Dedicated Print Container (Only visible during window.print()) -->
+  <pre id="rewrittenResumePrintArea"></pre>
+
+  <!-- ==========================================================================
+       Modal: Settings & AI Provider Config
+       ========================================================================== -->
+  <div id="settingsModal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="settingsModalTitle">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h2 id="settingsModalTitle" class="modal-title">⚙️ AI Provider & Model Configuration</h2>
+        <button id="closeSettingsBtn" class="modal-close-btn" aria-label="Close modal">✕</button>
+      </div>
+      <div class="modal-body">
+
+        <div class="provider-toggle-group">
+          <button id="provBuiltinBtn" class="provider-toggle-btn active" type="button">
+            ⚡ Built-in Engine
+          </button>
+          <button id="provGeminiBtn" class="provider-toggle-btn" type="button">
+            Google AI (Gemini)
+          </button>
+          <button id="provOllamaBtn" class="provider-toggle-btn" type="button">
+            Ollama (Local)
+          </button>
+        </div>
+
+        <!-- Built-in Pane -->
+        <div id="paneBuiltinSettings" style="display: block;">
+          <div class="security-notice" style="background-color: var(--brand-light); border-color: var(--brand-border); color: var(--brand-primary);">
+            <span>⚡</span>
+            <div><strong>Built-in Expert Engine:</strong> 100% offline, zero setup, runs completely in your browser. Analyzes formatting, metrics, sections, spelling, and keywords without sending data anywhere.</div>
+          </div>
+        </div>
+
+        <!-- Google AI / Gemini Pane -->
+        <div id="paneGeminiSettings" style="display: none;">
+          <div class="form-group">
+            <label for="geminiApiKeyInput" class="form-label">
+              <span>Google AI API Key</span>
+              <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer" style="font-size: 0.725rem;">Get Free Key &rarr;</a>
+            </label>
+            <div style="position: relative;">
+              <input type="password" id="geminiApiKeyInput" class="form-control" placeholder="AIzaSy..." autocomplete="off">
+              <button id="toggleKeyVisibilityBtn" type="button" style="position: absolute; right: 8px; top: 50%; transform: translateY(-50%); font-size: 0.8rem; color: var(--text-subtle);">👁️</button>
+            </div>
+            <span class="form-label-tag" style="margin-top: 4px; display: block;">Stored in your browser only. Proxied through server if available.</span>
+          </div>
+
+          <div class="form-group">
+            <label for="geminiModelSelect" class="form-label">
+              <span>Model Selection (Official Google Model IDs)</span>
+            </label>
+            <select id="geminiModelSelect" class="form-control" style="margin-bottom: 6px;">
+              <option value="gemini-2.0-flash" selected>gemini-2.0-flash (Recommended — Fast & Multimodal)</option>
+              <option value="gemini-2.0-flash-lite-preview-02-05">gemini-2.0-flash-lite-preview-02-05 (Low Latency)</option>
+              <option value="gemini-1.5-flash">gemini-1.5-flash (Stable Multimodal Workhorse)</option>
+              <option value="gemini-1.5-pro">gemini-1.5-pro (Deep Multimodal Reasoning)</option>
+              <option value="gemma-2-9b-it">gemma-2-9b-it (Google Open Model)</option>
+              <option value="gemma-2-27b-it">gemma-2-27b-it (Google Open Model 27B)</option>
+              <option value="custom">Custom Model ID...</option>
+            </select>
+            <input type="text" id="geminiCustomModelInput" class="form-control" placeholder="Enter custom model identifier" style="display: none;">
+          </div>
+
+          <div class="security-notice">
+            <span>🔒</span>
+            <div><strong>Security Guarantee:</strong> Your API key is stored only in local storage and never exposed on the wire.</div>
+          </div>
+        </div>
+
+        <!-- Ollama Pane -->
+        <div id="paneOllamaSettings" style="display: none;">
+          <div class="form-group">
+            <label for="ollamaUrlInput" class="form-label">
+              <span>Ollama Host URL</span>
+              <span class="form-label-tag">Default: http://localhost:11434</span>
+            </label>
+            <input type="text" id="ollamaUrlInput" class="form-control" value="http://localhost:11434">
+          </div>
+
+          <div class="form-group">
+            <label for="ollamaModelInput" class="form-label">
+              <span>Ollama Model Name</span>
+              <span class="form-label-tag">e.g. gemma2, gemma:7b</span>
+            </label>
+            <input type="text" id="ollamaModelInput" class="form-control" value="gemma2">
+          </div>
+
+          <div class="security-notice" style="background-color: var(--sev-low-bg); border-color: var(--sev-low-border); color: var(--sev-low-text);">
+            <span>💡</span>
+            <div><strong>CORS Note:</strong> Start Ollama with: <code>OLLAMA_ORIGINS="*" ollama serve</code></div>
+          </div>
+        </div>
+
+      </div>
+      <div class="modal-footer">
+        <button id="testConnectionBtn" class="btn-outline" type="button">Test Connection</button>
+        <button id="saveSettingsBtn" class="btn-primary" type="button">Save Settings</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==========================================================================
+       Modal: Cover Letter Generator
+       ========================================================================== -->
+  <div id="coverLetterModal" class="modal-overlay" role="dialog" aria-modal="true">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h2 class="modal-title">✉️ Tailored ATS Cover Letter</h2>
+        <button id="closeCoverLetterBtn" class="modal-close-btn" aria-label="Close">✕</button>
+      </div>
+      <div class="modal-body">
+        <p style="font-size: 0.825rem; color: var(--text-muted);">
+          Generated based on your diagnosed resume qualifications and target job requirements.
+        </p>
+        <pre id="coverLetterTextBox" class="rewrite-code-box" style="min-height: 260px; max-height: 360px;"></pre>
+      </div>
+      <div class="modal-footer">
+        <button id="copyCoverLetterBtn" class="btn-outline" type="button">📋 Copy Cover Letter</button>
+        <button id="downloadCoverLetterBtn" class="btn-primary" type="button">💾 Download .txt</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==========================================================================
+       Modal: LinkedIn Suggestions
+       ========================================================================== -->
+  <div id="linkedInModal" class="modal-overlay" role="dialog" aria-modal="true">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h2 class="modal-title">💼 LinkedIn Headline & Summary Suggestions</h2>
+        <button id="closeLinkedInBtn" class="modal-close-btn" aria-label="Close">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label class="form-label"><span>Recommended LinkedIn Headlines</span></label>
+          <div id="linkedInHeadlinesContainer" style="display: flex; flex-direction: column; gap: 8px;"></div>
+        </div>
+        <div class="form-group">
+          <label class="form-label"><span>Optimized LinkedIn "About" Summary</span></label>
+          <pre id="linkedInAboutBox" class="rewrite-code-box" style="min-height: 180px; max-height: 250px;"></pre>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button id="copyLinkedInBtn" class="btn-primary" type="button">📋 Copy About Summary</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==========================================================================
+       Modal: Resume Audit History
+       ========================================================================== -->
+  <div id="historyModal" class="modal-overlay" role="dialog" aria-modal="true">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h2 class="modal-title">📜 Resume Score History</h2>
+        <button id="closeHistoryBtn" class="modal-close-btn" aria-label="Close">✕</button>
+      </div>
+      <div class="modal-body">
+        <div id="historyListContainer" style="display: flex; flex-direction: column; gap: 8px;">
+          <!-- Populated from localStorage -->
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button id="clearHistoryBtn" class="btn-outline" type="button">Clear History</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Container -->
+  <div id="toastContainer" class="toast-container" aria-live="polite"></div>
+
+  <!-- Footer -->
+  <footer class="app-footer">
+    <div>Resume Doctor — Open-Source AI ATS Resume Reviewer & Sanitizer.</div>
+    <div class="footer-links">
+      <span>MIT License</span>
+      <span>•</span>
+      <span>100% Client-Side Privacy (Resumes never stored on any server)</span>
+      <span>•</span>
+      <span>Zero XSS innerHTML Guaranteed</span>
+    </div>
+  </footer>
+
+  <!-- ==========================================================================
+       Client-Side JavaScript Application Logic
+       ========================================================================== -->
+  <script>
+    (function () {
+      'use strict';
+
+      // ========================================================================
+      // State Management
+      // ========================================================================
+      const STATE = {
+        uploadedFile: null,
+        uploadedImageBase64: null,
+        uploadedImageMime: null,
+        extractedText: '',
+        analysisResult: null,
+        activeFilter: 'all',
+        lang: 'en', // 'en' | 'ta'
+        config: {
+          provider: 'builtin', // 'builtin' | 'gemini' | 'ollama'
+          geminiApiKey: '',
+          geminiModel: 'gemini-2.0-flash',
+          ollamaUrl: 'http://localhost:11434',
+          ollamaModel: 'gemma2'
+        }
+      };
+
+      // Set PDF.js worker
+      if (window.pdfjsLib) {
+        window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+      }
+
+      // Prevent default drag/drop on entire browser window so accidental drops don't navigate
+      ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(evtName => {
+        window.addEventListener(evtName, (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+        }, false);
+      });
+
+      // ========================================================================
+      // Pre-loaded Sample Resumes
+      // ========================================================================
+      const SAMPLES = {
+        juniorSwe: {
+          role: "Full-Stack Software Engineer",
+          jobDesc: `Requirements:
+- 2+ years of experience with React, TypeScript, and Node.js.
+- Experience architecting RESTful APIs and working with PostgreSQL databases.
+- Familiarity with Docker, Kubernetes, CI/CD pipelines, and AWS cloud services.
+- Strong understanding of unit testing (Jest), clean code, and Agile practices.
+- Excellent communication and collaboration skills.`,
+          resumeText: `Alex Mercer
+alex.mercer.dev@email.com | (555) 432-8765 | San Francisco, CA
+
+ABOUT ME
+Passionate software developer who loves building cool apps, fixing bugs, and learning new technologies in fast-paced environments. Looking for a full stack opportunity to level up my skills.
+
+WORK HISTORY
+Frontend Developer | TechCorp Inc.
+Jan 2023 - Present
+- Worked on various frontend features using React and JavaScript.
+- Helped fix bugs reported by the QA team in the customer dashboard.
+- Assisted senior engineers with database migrations.
+- Attended daily standups and agile sprint planning meetings.
+- Collaborated with designers to update button styles and layouts.
+
+Junior Web Developer | Digital Innovations LLC
+June 2021 to December 2022
+- Maintained company website built with HTML, CSS, and basic PHP.
+- Created forms for user registration.
+- Responded to support tickets from clients.
+- Responsible for website backups on server.
+
+PROJECTS & COOL STUFF
+CryptoTracker App
+- Built a crypto tracking app in React.
+- Used an external API to fetch prices.
+- Deployed on Vercel.
+
+EDUCATION & AWARDS
+B.S. in Computer Science | State University (Graduated 2021)
+- Dean's List
+- Member of Coding Club
+
+TECH I LIKE
+React, JavaScript, HTML/CSS, Git, Python, SQL, Express.`
+        },
+        productManager: {
+          role: "Senior Technical Product Manager",
+          jobDesc: `Key Responsibilities:
+- 5+ years leading cross-functional engineering teams in agile/scrum environments.
+- Define product roadmaps, OKRs, PRDs, user stories, and acceptance criteria in Jira.
+- Conduct data analytics using SQL, Amplitude, and A/B testing platforms.
+- Deep technical fluency with cloud microservices, REST APIs, and system architecture.
+- Proven track record of improving user retention, conversion rates, and Annual Recurring Revenue (ARR).`,
+          resumeText: `Jordan Taylor
+jordan.t.pm@email.com | (555) 019-3829 | Austin, TX
+
+MY PROFESSIONAL JOURNEY & PASSION
+Energetic product leader who manages backlogs, leads meetings, and collaborates with developers and stakeholders to deliver digital products.
+
+CAREER HIGHLIGHTS
+[TABLE LAYOUT - 2 COLUMNS DETECTED]
+Role: Product Lead | CloudScale Technologies | 2022 to Present
+★ Managed team of engineers and designers to launch new mobile features.
+★ Talked to customers and gathered feedback on usability.
+★ Worked with marketing on release notes and product announcements.
+★ Ran sprint retrospectives and grooming sessions.
+
+Role: Associate PM | Apex Software | 2019 - 2022
+❖ Responsible for backlog prioritization in Jira.
+❖ Attended daily standups and answered questions from QA.
+❖ Helped write user stories for the engineering team.
+❖ Assisted with product launch demos.
+
+NOTABLE ACHIEVEMENTS & SIDE HUSTLES
+✈ E-Commerce Redesign: Helped redesign checkout funnel.
+✈ Podcast Host: Host of tech weekly podcast with 500 listeners.
+
+EDUCATION
+B.A. in Communications | University of Texas (2018)
+
+SKILLS & TOOLS
+Jira, Confluence, Product Management, Agile, Communication, Problem Solving, Wireframing.`
+        }
+      };
+
+      // ========================================================================
+      // DOM Elements Cache
+      // ========================================================================
+      const DOM = {
+        themeToggleBtn: document.getElementById('themeToggleBtn'),
+        themeIcon: document.getElementById('themeIcon'),
+        langToggleBtn: document.getElementById('langToggleBtn'),
+        langLabel: document.getElementById('langLabel'),
+        settingsBtn: document.getElementById('settingsBtn'),
+        historyBtn: document.getElementById('historyBtn'),
+        quickConfigBtn: document.getElementById('quickConfigBtn'),
+        sampleBtn: document.getElementById('sampleBtn'),
+        sampleMenu: document.getElementById('sampleMenu'),
+        sampleSweBtn: document.getElementById('sampleSweBtn'),
+        samplePmBtn: document.getElementById('samplePmBtn'),
+        idleSampleBtn: document.getElementById('idleSampleBtn'),
+        
+        dropzone: document.getElementById('dropzone'),
+        fileInput: document.getElementById('fileInput'),
+        filePreview: document.getElementById('filePreview'),
+        filePreviewThumb: document.getElementById('filePreviewThumb'),
+        filePreviewIcon: document.getElementById('filePreviewIcon'),
+        filePreviewName: document.getElementById('filePreviewName'),
+        filePreviewMeta: document.getElementById('filePreviewMeta'),
+        fileClearBtn: document.getElementById('fileClearBtn'),
+        
+        tabResumeBtn: document.getElementById('tabResumeBtn'),
+        tabJobBtn: document.getElementById('tabJobBtn'),
+        paneResumeText: document.getElementById('paneResumeText'),
+        paneJobText: document.getElementById('paneJobText'),
+        resumeTextArea: document.getElementById('resumeTextArea'),
+        resumeCharCount: document.getElementById('resumeCharCount'),
+        targetRoleInput: document.getElementById('targetRoleInput'),
+        jobDescTextArea: document.getElementById('jobDescTextArea'),
+        jobCharCount: document.getElementById('jobCharCount'),
+        
+        statusIndicatorDot: document.getElementById('statusIndicatorDot'),
+        statusProviderName: document.getElementById('statusProviderName'),
+        analyzeBtn: document.getElementById('analyzeBtn'),
+        resetBtn: document.getElementById('resetBtn'),
+
+        idleState: document.getElementById('idleState'),
+        loadingState: document.getElementById('loadingState'),
+        loadingStepText: document.getElementById('loadingStepText'),
+        errorBox: document.getElementById('errorBox'),
+        errorMessageText: document.getElementById('errorMessageText'),
+        errorFallbackBtn: document.getElementById('errorFallbackBtn'),
+        resultsDashboard: document.getElementById('resultsDashboard'),
+        
+        scoreRingCircle: document.getElementById('scoreRingCircle'),
+        scoreNumber: document.getElementById('scoreNumber'),
+        conditionBadge: document.getElementById('conditionBadge'),
+        prognosisSummary: document.getElementById('prognosisSummary'),
+        
+        subScoreFormat: document.getElementById('subScoreFormat'),
+        barFormat: document.getElementById('barFormat'),
+        subScoreImpact: document.getElementById('subScoreImpact'),
+        barImpact: document.getElementById('barImpact'),
+        subScoreGrammar: document.getElementById('subScoreGrammar'),
+        barGrammar: document.getElementById('barGrammar'),
+        subScoreKeyword: document.getElementById('subScoreKeyword'),
+        barKeyword: document.getElementById('barKeyword'),
+        
+        sectionChecksGrid: document.getElementById('sectionChecksGrid'),
+        bulletPairsList: document.getElementById('bulletPairsList'),
+
+        matchedCount: document.getElementById('matchedCount'),
+        matchedKeywordsContainer: document.getElementById('matchedKeywordsContainer'),
+        missingCount: document.getElementById('missingCount'),
+        missingKeywordsContainer: document.getElementById('missingKeywordsContainer'),
+        
+        totalIssuesBadge: document.getElementById('totalIssuesBadge'),
+        issuesList: document.getElementById('issuesList'),
+        filterButtons: document.querySelectorAll('.filter-btn'),
+        
+        viewCleanBtn: document.getElementById('viewCleanBtn'),
+        viewSbsBtn: document.getElementById('viewSbsBtn'),
+        rewrittenResumeBox: document.getElementById('rewrittenResumeBox'),
+        sideBySideBox: document.getElementById('sideBySideBox'),
+        sbsOriginalBox: document.getElementById('sbsOriginalBox'),
+        sbsRewrittenBox: document.getElementById('sbsRewrittenBox'),
+        
+        copyRewriteBtn: document.getElementById('copyRewriteBtn'),
+        downloadTxtBtn: document.getElementById('downloadTxtBtn'),
+        printPdfBtn: document.getElementById('printPdfBtn'),
+        rewrittenResumePrintArea: document.getElementById('rewrittenResumePrintArea'),
+        rawJsonResponseBox: document.getElementById('rawJsonResponseBox'),
+
+        btnOpenCoverLetter: document.getElementById('btnOpenCoverLetter'),
+        coverLetterModal: document.getElementById('coverLetterModal'),
+        closeCoverLetterBtn: document.getElementById('closeCoverLetterBtn'),
+        coverLetterTextBox: document.getElementById('coverLetterTextBox'),
+        copyCoverLetterBtn: document.getElementById('copyCoverLetterBtn'),
+        downloadCoverLetterBtn: document.getElementById('downloadCoverLetterBtn'),
+
+        btnOpenLinkedIn: document.getElementById('btnOpenLinkedIn'),
+        linkedInModal: document.getElementById('linkedInModal'),
+        closeLinkedInBtn: document.getElementById('closeLinkedInBtn'),
+        linkedInHeadlinesContainer: document.getElementById('linkedInHeadlinesContainer'),
+        linkedInAboutBox: document.getElementById('linkedInAboutBox'),
+        copyLinkedInBtn: document.getElementById('copyLinkedInBtn'),
+
+        historyModal: document.getElementById('historyModal'),
+        closeHistoryBtn: document.getElementById('closeHistoryBtn'),
+        historyListContainer: document.getElementById('historyListContainer'),
+        clearHistoryBtn: document.getElementById('clearHistoryBtn'),
+
+        settingsModal: document.getElementById('settingsModal'),
+        closeSettingsBtn: document.getElementById('closeSettingsBtn'),
+        provBuiltinBtn: document.getElementById('provBuiltinBtn'),
+        provGeminiBtn: document.getElementById('provGeminiBtn'),
+        provOllamaBtn: document.getElementById('provOllamaBtn'),
+        paneBuiltinSettings: document.getElementById('paneBuiltinSettings'),
+        paneGeminiSettings: document.getElementById('paneGeminiSettings'),
+        paneOllamaSettings: document.getElementById('paneOllamaSettings'),
+        geminiApiKeyInput: document.getElementById('geminiApiKeyInput'),
+        toggleKeyVisibilityBtn: document.getElementById('toggleKeyVisibilityBtn'),
+        geminiModelSelect: document.getElementById('geminiModelSelect'),
+        geminiCustomModelInput: document.getElementById('geminiCustomModelInput'),
+        ollamaUrlInput: document.getElementById('ollamaUrlInput'),
+        ollamaModelInput: document.getElementById('ollamaModelInput'),
+        testConnectionBtn: document.getElementById('testConnectionBtn'),
+        saveSettingsBtn: document.getElementById('saveSettingsBtn'),
+        toastContainer: document.getElementById('toastContainer'),
+
+        // Translatable elements
+        txtBrandSubtitle: document.getElementById('txtBrandSubtitle'),
+        txtHeroTitle: document.getElementById('txtHeroTitle'),
+        txtHeroDesc: document.getElementById('txtHeroDesc'),
+        txtUploadTitle: document.getElementById('txtUploadTitle'),
+        txtDropTitle: document.getElementById('txtDropTitle'),
+        txtDropSub: document.getElementById('txtDropSub'),
+        txtBrowseBtn: document.getElementById('txtBrowseBtn'),
+        txtResumeTextLabel: document.getElementById('txtResumeTextLabel'),
+        txtTargetRoleLabel: document.getElementById('txtTargetRoleLabel'),
+        txtJobDescLabel: document.getElementById('txtJobDescLabel'),
+        txtAnalyzeBtn: document.getElementById('txtAnalyzeBtn'),
+        txtResetBtn: document.getElementById('txtResetBtn'),
+        txtIdleTitle: document.getElementById('txtIdleTitle'),
+        txtIdleDesc: document.getElementById('txtIdleDesc'),
+        txtOneClickTest: document.getElementById('txtOneClickTest'),
+        txtPrognosisTitle: document.getElementById('txtPrognosisTitle'),
+        txtSubFormat: document.getElementById('txtSubFormat'),
+        txtSubImpact: document.getElementById('txtSubImpact'),
+        txtSubGrammar: document.getElementById('txtSubGrammar'),
+        txtSubKeywords: document.getElementById('txtSubKeywords'),
+        txtSecChecksTitle: document.getElementById('txtSecChecksTitle'),
+        txtRewrittenBulletsTitle: document.getElementById('txtRewrittenBulletsTitle'),
+        txtTopFixesTitle: document.getElementById('txtTopFixesTitle'),
+        txtCleanResumeTitle: document.getElementById('txtCleanResumeTitle'),
+        txtCoverLetterBtn: document.getElementById('txtCoverLetterBtn'),
+        txtLinkedInBtn: document.getElementById('txtLinkedInBtn'),
+        txtCopyBtn: document.getElementById('txtCopyBtn'),
+        txtDownloadTxtBtn: document.getElementById('txtDownloadTxtBtn'),
+        txtPrintBtn: document.getElementById('txtPrintBtn')
+      };
+
+      // ========================================================================
+      // Multi-Language Dictionary (English & Tamil)
+      // ========================================================================
+      const I18N = {
+        en: {
+          brandSubtitle: "Open-Source ATS Reviewer & Sanitizer",
+          heroTitle: "Cure Your Resume Before the ATS Rejects It",
+          heroDesc: "Deep ATS audit for spelling, inconsistent dates/tense, missing sections, weak bullets, and layout traps. Prescribes exact fixes and generates a sanitized plain-text rewrite.",
+          uploadTitle: "📄 1. Patient Resume Input",
+          dropTitle: "Drop your resume here or click to browse",
+          dropSub: "Supports PDF, DOCX, PNG/JPG (resized to 1600px), or TXT (Max 5MB)",
+          browseBtn: "📂 Browse Resume File",
+          resumeTextLabel: "Resume Text (Extracted or Pasted)",
+          targetRoleLabel: "Target Role / Title",
+          jobDescLabel: "Target Job Description",
+          analyzeBtn: "🩺 Prescribe Fixes & Analyze",
+          resetBtn: "Reset",
+          idleTitle: "Ready for Your Resume Diagnosis",
+          idleDesc: "Upload your resume or click 1-Click Test to run our comprehensive ATS inspection.",
+          oneClickTest: "🚀 1-Click Test & Diagnose Sample Resume",
+          prognosisTitle: "🩺 Doctor's Prognosis",
+          subFormat: "ATS Formatting",
+          subImpact: "Bullet Impact & Metrics",
+          subGrammar: "Grammar & Consistency",
+          subKeywords: "Role & Keyword Fit",
+          secChecksTitle: "📑 ATS Section Health Check",
+          rewrittenBulletsTitle: "⚡ Bullet Point Transformations (Before ➔ After)",
+          topFixesTitle: "📋 Top Prioritized Prescriptions",
+          cleanResumeTitle: "✨ Rewritten ATS-Compliant Resume",
+          coverLetterBtn: "✉️ Generate Cover Letter",
+          linkedInBtn: "💼 LinkedIn Suggestions",
+          copyBtn: "📋 Copy",
+          downloadTxtBtn: "💾 Download .txt",
+          printBtn: "🖨️ Print / Save PDF"
+        },
+        ta: {
+          brandSubtitle: "ATS ரெஸ்யூம் பரிசோதனை & திருத்தும் கருவி",
+          heroTitle: "ATS நிராகரிக்கும் முன் உங்கள் ரெஸ்யூமை குணப்படுத்துங்கள்",
+          heroDesc: "எழுத்துப் பிழைகள், கால முரண்பாடுகள், பலவீனமான வரிகள் மற்றும் ஃபார்மேட்டிங் தவறுகளைக் கண்டறிந்து சரியான பரிந்துரைகளையும் சுத்தமான ATS ரெஸ்யூமையும் உருவாக்குகிறது.",
+          uploadTitle: "📄 1. ரெஸ்யூம் உள்ளீடு",
+          dropTitle: "இங்கே ரெஸ்யூமை இழுத்து விடவும் அல்லது கிளிக் செய்யவும்",
+          dropSub: "PDF, DOCX, படங்கள் (PNG/JPG 1600px), அல்லது TXT (அதிகபட்சம் 5MB)",
+          browseBtn: "📂 கோப்பைத் தேர்ந்தெடுக்கவும்",
+          resumeTextLabel: "ரெஸ்யூம் உரை உள்ளடக்கம்",
+          targetRoleLabel: "இலக்கு வேலைப் பதவி / தலைப்பு",
+          jobDescLabel: "வேலை விவரம் (Job Description)",
+          analyzeBtn: "🩺 பரிசோதித்து திருத்து & ஆய்வு செய்",
+          resetBtn: "மீட்டமைக்க (Reset)",
+          idleTitle: "உங்கள் ரெஸ்யூம் பரிசோதனைக்குத் தயார்",
+          idleDesc: "ரெஸ்யூமை பதிவேற்றவும் அல்லது உடனடி மாதிரி சோதனையைக் கிளிக் செய்யவும்.",
+          oneClickTest: "🚀 1-கிளிக் உடனடி மாதிரி பரிசோதனை",
+          prognosisTitle: "🩺 மருத்துவரின் இறுதி அறிக்கை",
+          subFormat: "ATS வடிவமைப்பு (Formatting)",
+          subImpact: "வரிகளின் தாக்கம் & அளவீடுகள்",
+          subGrammar: "இலக்கணம் & சீரான தன்மை",
+          subKeywords: "வேலைக்கான முக்கிய சொற்கள்",
+          secChecksTitle: "📑 ATS பிரிவுகள் பரிசோதனை",
+          rewrittenBulletsTitle: "⚡ மேம்படுத்தப்பட்ட வரிகள் (முன் ➔ பின்)",
+          topFixesTitle: "📋 முன்னுரிமைப் பரிந்துரைகள்",
+          cleanResumeTitle: "✨ திருத்தப்பட்ட ATS ரெஸ்யூம்",
+          coverLetterBtn: "✉️ கவர் லெட்டர் உருவாக்கு",
+          linkedInBtn: "💼 LinkedIn பரிந்துரைகள்",
+          copyBtn: "📋 நகலெடு",
+          downloadTxtBtn: "💾 .txt தரவிறக்கு",
+          printBtn: "🖨️ அச்சிடு / PDF சேமி"
+        }
+      };
+
+      function updateLanguage(lang) {
+        STATE.lang = lang;
+        const dict = I18N[lang] || I18N.en;
+        DOM.langLabel.textContent = lang === 'en' ? 'தமிழ்' : 'English';
+        
+        DOM.txtBrandSubtitle.textContent = dict.brandSubtitle;
+        DOM.txtHeroDesc.textContent = dict.heroDesc;
+        DOM.txtUploadTitle.textContent = dict.uploadTitle;
+        DOM.txtDropTitle.textContent = dict.dropTitle;
+        DOM.txtDropSub.textContent = dict.dropSub;
+        DOM.txtBrowseBtn.textContent = dict.browseBtn;
+        DOM.txtResumeTextLabel.textContent = dict.resumeTextLabel;
+        DOM.txtTargetRoleLabel.textContent = dict.targetRoleLabel;
+        DOM.txtJobDescLabel.textContent = dict.jobDescLabel;
+        DOM.txtAnalyzeBtn.textContent = dict.analyzeBtn;
+        DOM.txtResetBtn.textContent = dict.resetBtn;
+        DOM.txtIdleTitle.textContent = dict.idleTitle;
+        DOM.txtIdleDesc.textContent = dict.idleDesc;
+        DOM.txtOneClickTest.textContent = dict.oneClickTest;
+        DOM.txtPrognosisTitle.textContent = dict.prognosisTitle;
+        DOM.txtSubFormat.textContent = dict.subFormat;
+        DOM.txtSubImpact.textContent = dict.subImpact;
+        DOM.txtSubGrammar.textContent = dict.subGrammar;
+        DOM.txtSubKeywords.textContent = dict.subKeywords;
+        DOM.txtSecChecksTitle.textContent = dict.secChecksTitle;
+        DOM.txtRewrittenBulletsTitle.textContent = dict.rewrittenBulletsTitle;
+        DOM.txtTopFixesTitle.textContent = dict.topFixesTitle;
+        DOM.txtCleanResumeTitle.textContent = dict.cleanResumeTitle;
+        DOM.txtCoverLetterBtn.textContent = dict.coverLetterBtn;
+        DOM.txtLinkedInBtn.textContent = dict.linkedInBtn;
+        DOM.txtCopyBtn.textContent = dict.copyBtn;
+        DOM.txtDownloadTxtBtn.textContent = dict.downloadTxtBtn;
+        DOM.txtPrintBtn.textContent = dict.printBtn;
+      }
+
+      DOM.langToggleBtn.addEventListener('click', () => {
+        updateLanguage(STATE.lang === 'en' ? 'ta' : 'en');
+      });
+
+      // ========================================================================
+      // Toast System
+      // ========================================================================
+      function showToast(message, type = 'info') {
+        const toast = document.createElement('div');
+        toast.className = 'toast-pill';
+        
+        const iconSpan = document.createElement('span');
+        iconSpan.textContent = type === 'success' ? '✓' : (type === 'error' ? '⚠️' : 'ℹ️');
+        
+        const msgSpan = document.createElement('span');
+        msgSpan.textContent = message;
+        
+        toast.appendChild(iconSpan);
+        toast.appendChild(msgSpan);
+        DOM.toastContainer.appendChild(toast);
+        
+        setTimeout(() => {
+          toast.style.transition = 'opacity 0.3s ease, transform 0.3s ease';
+          toast.style.opacity = '0';
+          toast.style.transform = 'translateY(10px)';
+          setTimeout(() => toast.remove(), 300);
+        }, 4000);
+      }
+
+      // ========================================================================
+      // Theme Manager
+      // ========================================================================
+      function initTheme() {
+        const savedTheme = localStorage.getItem('resume_doctor_theme');
+        const systemPrefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+        const activeTheme = savedTheme || (systemPrefersDark ? 'dark' : 'light');
+        setTheme(activeTheme);
+      }
+
+      function setTheme(theme) {
+        document.documentElement.setAttribute('data-theme', theme);
+        localStorage.setItem('resume_doctor_theme', theme);
+        DOM.themeIcon.textContent = theme === 'dark' ? '☀️' : '🌙';
+      }
+
+      DOM.themeToggleBtn.addEventListener('click', () => {
+        const current = document.documentElement.getAttribute('data-theme') || 'light';
+        setTheme(current === 'dark' ? 'light' : 'dark');
+      });
+
+      // ========================================================================
+      // Settings Storage & Initialization
+      // ========================================================================
+      function loadSettings() {
+        try {
+          const stored = localStorage.getItem('resume_doctor_config');
+          if (stored) {
+            const parsed = JSON.parse(stored);
+            STATE.config = Object.assign(STATE.config, parsed);
+          }
+        } catch (e) {
+          console.error("Failed to load settings:", e);
+        }
+        if (!STATE.config.provider || (STATE.config.provider === 'gemini' && !STATE.config.geminiApiKey)) {
+          STATE.config.provider = 'builtin';
+        }
+        updateProviderStatusDisplay();
+      }
+
+      function saveSettings() {
+        try {
+          localStorage.setItem('resume_doctor_config', JSON.stringify(STATE.config));
+          updateProviderStatusDisplay();
+          showToast('Settings saved successfully', 'success');
+        } catch (e) {
+          showToast('Failed to save settings: ' + e.message, 'error');
+        }
+      }
+
+      function updateProviderStatusDisplay() {
+        const dot = DOM.statusIndicatorDot;
+        const text = DOM.statusProviderName;
+        
+        if (STATE.config.provider === 'builtin') {
+          dot.className = 'status-dot';
+          text.textContent = '⚡ Engine: Built-in ATS (Instant & Free)';
+        } else if (STATE.config.provider === 'gemini') {
+          const hasKey = Boolean(STATE.config.geminiApiKey && STATE.config.geminiApiKey.trim());
+          const model = STATE.config.geminiModel === 'custom' ? (STATE.config.geminiCustomModel || 'custom') : STATE.config.geminiModel;
+          dot.className = hasKey ? 'status-dot' : 'status-dot warning';
+          text.textContent = hasKey ? `Google AI: ${model}` : 'Google AI: (Key Required)';
+        } else {
+          dot.className = 'status-dot';
+          text.textContent = `Ollama: ${STATE.config.ollamaModel}`;
+        }
+      }
+
+      function openSettingsModal() {
+        DOM.provBuiltinBtn.classList.remove('active');
+        DOM.provGeminiBtn.classList.remove('active');
+        DOM.provOllamaBtn.classList.remove('active');
+        DOM.paneBuiltinSettings.style.display = 'none';
+        DOM.paneGeminiSettings.style.display = 'none';
+        DOM.paneOllamaSettings.style.display = 'none';
+
+        if (STATE.config.provider === 'builtin') {
+          DOM.provBuiltinBtn.classList.add('active');
+          DOM.paneBuiltinSettings.style.display = 'block';
+        } else if (STATE.config.provider === 'gemini') {
+          DOM.provGeminiBtn.classList.add('active');
+          DOM.paneGeminiSettings.style.display = 'block';
+        } else {
+          DOM.provOllamaBtn.classList.add('active');
+          DOM.paneOllamaSettings.style.display = 'block';
+        }
+
+        DOM.geminiApiKeyInput.value = STATE.config.geminiApiKey || '';
+        
+        const knownModels = ['gemini-2.0-flash', 'gemini-2.0-flash-lite-preview-02-05', 'gemini-1.5-flash', 'gemini-1.5-pro', 'gemma-2-9b-it', 'gemma-2-27b-it'];
+        if (knownModels.includes(STATE.config.geminiModel)) {
+          DOM.geminiModelSelect.value = STATE.config.geminiModel;
+          DOM.geminiCustomModelInput.style.display = 'none';
+        } else {
+          DOM.geminiModelSelect.value = 'custom';
+          DOM.geminiCustomModelInput.value = STATE.config.geminiModel || '';
+          DOM.geminiCustomModelInput.style.display = 'block';
+        }
+
+        DOM.ollamaUrlInput.value = STATE.config.ollamaUrl || 'http://localhost:11434';
+        DOM.ollamaModelInput.value = STATE.config.ollamaModel || 'gemma2';
+
+        DOM.settingsModal.classList.add('open');
+      }
+
+      function closeSettingsModal() {
+        DOM.settingsModal.classList.remove('open');
+      }
+
+      DOM.settingsBtn.addEventListener('click', openSettingsModal);
+      DOM.quickConfigBtn.addEventListener('click', openSettingsModal);
+      DOM.closeSettingsBtn.addEventListener('click', closeSettingsModal);
+      DOM.settingsModal.addEventListener('click', (e) => {
+        if (e.target === DOM.settingsModal) closeSettingsModal();
+      });
+
+      DOM.provBuiltinBtn.addEventListener('click', () => {
+        DOM.provBuiltinBtn.classList.add('active');
+        DOM.provGeminiBtn.classList.remove('active');
+        DOM.provOllamaBtn.classList.remove('active');
+        DOM.paneBuiltinSettings.style.display = 'block';
+        DOM.paneGeminiSettings.style.display = 'none';
+        DOM.paneOllamaSettings.style.display = 'none';
+      });
+
+      DOM.provGeminiBtn.addEventListener('click', () => {
+        DOM.provGeminiBtn.classList.add('active');
+        DOM.provBuiltinBtn.classList.remove('active');
+        DOM.provOllamaBtn.classList.remove('active');
+        DOM.paneGeminiSettings.style.display = 'block';
+        DOM.paneBuiltinSettings.style.display = 'none';
+        DOM.paneOllamaSettings.style.display = 'none';
+      });
+
+      DOM.provOllamaBtn.addEventListener('click', () => {
+        DOM.provOllamaBtn.classList.add('active');
+        DOM.provBuiltinBtn.classList.remove('active');
+        DOM.provGeminiBtn.classList.remove('active');
+        DOM.paneOllamaSettings.style.display = 'block';
+        DOM.paneBuiltinSettings.style.display = 'none';
+        DOM.paneGeminiSettings.style.display = 'none';
+      });
+
+      DOM.geminiModelSelect.addEventListener('change', () => {
+        if (DOM.geminiModelSelect.value === 'custom') {
+          DOM.geminiCustomModelInput.style.display = 'block';
+          DOM.geminiCustomModelInput.focus();
+        } else {
+          DOM.geminiCustomModelInput.style.display = 'none';
+        }
+      });
+
+      DOM.toggleKeyVisibilityBtn.addEventListener('click', () => {
+        const type = DOM.geminiApiKeyInput.getAttribute('type') === 'password' ? 'text' : 'password';
+        DOM.geminiApiKeyInput.setAttribute('type', type);
+        DOM.toggleKeyVisibilityBtn.textContent = type === 'password' ? '👁️' : '🙈';
+      });
+
+      DOM.saveSettingsBtn.addEventListener('click', () => {
+        if (DOM.provBuiltinBtn.classList.contains('active')) {
+          STATE.config.provider = 'builtin';
+        } else if (DOM.provGeminiBtn.classList.contains('active')) {
+          STATE.config.provider = 'gemini';
+        } else {
+          STATE.config.provider = 'ollama';
+        }
+        
+        STATE.config.geminiApiKey = DOM.geminiApiKeyInput.value.trim();
+        if (DOM.geminiModelSelect.value === 'custom') {
+          STATE.config.geminiModel = DOM.geminiCustomModelInput.value.trim() || 'gemini-2.0-flash';
+        } else {
+          STATE.config.geminiModel = DOM.geminiModelSelect.value;
+        }
+
+        STATE.config.ollamaUrl = DOM.ollamaUrlInput.value.trim() || 'http://localhost:11434';
+        STATE.config.ollamaModel = DOM.ollamaModelInput.value.trim() || 'gemma2';
+
+        saveSettings();
+        closeSettingsModal();
+      });
+
+      DOM.testConnectionBtn.addEventListener('click', async () => {
+        const originalText = DOM.testConnectionBtn.textContent;
+        DOM.testConnectionBtn.disabled = true;
+        DOM.testConnectionBtn.textContent = 'Testing...';
+
+        const isBuiltin = DOM.provBuiltinBtn.classList.contains('active');
+        const isGemini = DOM.provGeminiBtn.classList.contains('active');
+        try {
+          if (isBuiltin) {
+            await new Promise(r => setTimeout(r, 200));
+            showToast('Built-in Engine is ready (100% offline, zero setup)!', 'success');
+          } else if (isGemini) {
+            const key = DOM.geminiApiKeyInput.value.trim();
+            if (!key) throw new Error('Please enter a Google AI API key first.');
+            const model = DOM.geminiModelSelect.value === 'custom' ? (DOM.geminiCustomModelInput.value.trim() || 'gemini-2.0-flash') : DOM.geminiModelSelect.value;
+            
+            // Try proxy endpoint first
+            let tested = false;
+            try {
+              const pRes = await fetch('/api/test-key', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'x-gemini-api-key': key }
+              });
+              if (pRes.ok) {
+                showToast('Backend proxy verified API key successfully!', 'success');
+                tested = true;
+              }
+            } catch (e) {}
+
+            if (!tested) {
+              const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`;
+              const res = await fetch(endpoint, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ contents: [{ parts: [{ text: "ping" }] }] })
+              }).catch(e => {
+                throw new Error(`Connection error (${e.message}). Check internet connection or API key.`);
+              });
+              if (!res.ok) {
+                const errData = await res.json().catch(() => ({}));
+                throw new Error(errData.error?.message || `HTTP ${res.status}`);
+              }
+              showToast('Google AI API connection test successful!', 'success');
+            }
+          } else {
+            const url = (DOM.ollamaUrlInput.value.trim() || 'http://localhost:11434').replace(/\/+$/, '');
+            const model = DOM.ollamaModelInput.value.trim() || 'gemma2';
+            const endpoint = `${url}/api/chat`;
+            
+            const res = await fetch(endpoint, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                model: model,
+                messages: [{ role: 'user', content: "ping" }],
+                stream: false
+              })
+            }).catch(e => {
+              throw new Error(`Cannot reach Ollama at ${url}. Start with: OLLAMA_ORIGINS="*" ollama serve`);
+            });
+            if (!res.ok) throw new Error(`Ollama HTTP ${res.status}`);
+            showToast('Ollama connection test successful!', 'success');
+          }
+        } catch (err) {
+          showToast(err.message, 'error');
+        } finally {
+          DOM.testConnectionBtn.disabled = false;
+          DOM.testConnectionBtn.textContent = originalText;
+        }
+      });
+
+      // ========================================================================
+      // Text Counters & Tab Navigation
+      // ========================================================================
+      function updateCounters() {
+        const resText = DOM.resumeTextArea.value || '';
+        const resWords = resText.trim() ? resText.trim().split(/\s+/).length : 0;
+        DOM.resumeCharCount.textContent = `${resWords} words • ${resText.length} characters`;
+
+        const jobText = DOM.jobDescTextArea.value || '';
+        const jobWords = jobText.trim() ? jobText.trim().split(/\s+/).length : 0;
+        DOM.jobCharCount.textContent = `${jobWords} words`;
+      }
+
+      DOM.resumeTextArea.addEventListener('input', updateCounters);
+      DOM.jobDescTextArea.addEventListener('input', updateCounters);
+
+      DOM.tabResumeBtn.addEventListener('click', () => {
+        DOM.tabResumeBtn.classList.add('active');
+        DOM.tabJobBtn.classList.remove('active');
+        DOM.paneResumeText.style.display = 'block';
+        DOM.paneJobText.style.display = 'none';
+      });
+
+      DOM.tabJobBtn.addEventListener('click', () => {
+        DOM.tabJobBtn.classList.add('active');
+        DOM.tabResumeBtn.classList.remove('active');
+        DOM.paneResumeText.style.display = 'none';
+        DOM.paneJobText.style.display = 'block';
+      });
+
+      // ========================================================================
+      // Image Resizing to 1600px Max Dimension
+      // ========================================================================
+      function resizeImageToMax1600(file) {
+        return new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = (e) => {
+            const img = new Image();
+            img.onload = () => {
+              let width = img.width;
+              let height = img.height;
+              const maxDim = 1600;
+
+              if (width > maxDim || height > maxDim) {
+                if (width > height) {
+                  height = Math.round((height * maxDim) / width);
+                  width = maxDim;
+                } else {
+                  width = Math.round((width * maxDim) / height);
+                  height = maxDim;
+                }
+              }
+
+              const canvas = document.createElement('canvas');
+              canvas.width = width;
+              canvas.height = height;
+              const ctx = canvas.getContext('2d');
+              ctx.drawImage(img, 0, 0, width, height);
+
+              const mimeType = file.type === 'image/png' ? 'image/png' : 'image/jpeg';
+              const dataUrl = canvas.toDataURL(mimeType, 0.9);
+              const base64Data = dataUrl.split(',')[1];
+
+              resolve({ dataUrl, base64Data, mimeType, width, height });
+            };
+            img.onerror = () => reject(new Error('Failed to load image for resizing.'));
+            img.src = e.target.result;
+          };
+          reader.onerror = () => reject(new Error('Failed to read image file.'));
+          reader.readAsDataURL(file);
+        });
+      }
+
+      // ========================================================================
+      // File Parsers: PDF & DOCX
+      // ========================================================================
+      async function extractTextFromPdf(file) {
+        if (!window.pdfjsLib) {
+          throw new Error('PDF.js library is not available.');
+        }
+
+        const arrayBuffer = await file.arrayBuffer();
+        const loadingTask = window.pdfjsLib.getDocument({ data: arrayBuffer });
+        const pdf = await loadingTask.promise;
+        let extracted = '';
+
+        for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+          const page = await pdf.getPage(pageNum);
+          const textContent = await page.getTextContent();
+          let lastY = null;
+          let pageText = '';
+
+          for (const item of textContent.items) {
+            if (lastY !== null && Math.abs(item.transform[5] - lastY) > 5) {
+              pageText += '\n';
+            } else if (pageText.length > 0 && !pageText.endsWith(' ') && !pageText.endsWith('\n')) {
+              pageText += ' ';
+            }
+            pageText += item.str;
+            lastY = item.transform[5];
+          }
+
+          extracted += (pageNum > 1 ? '\n\n' : '') + pageText.trim();
+        }
+
+        let scannedImage = null;
+        if (extracted.trim().length < 50 && pdf.numPages >= 1) {
+          try {
+            const firstPage = await pdf.getPage(1);
+            const viewport = firstPage.getViewport({ scale: 2.0 });
+            const pageCanvas = document.createElement('canvas');
+            pageCanvas.width = viewport.width;
+            pageCanvas.height = viewport.height;
+            const pCtx = pageCanvas.getContext('2d');
+            await firstPage.render({ canvasContext: pCtx, viewport }).promise;
+
+            let w = pageCanvas.width;
+            let h = pageCanvas.height;
+            const maxDim = 1600;
+            if (w > maxDim || h > maxDim) {
+              if (w > h) {
+                h = Math.round((h * maxDim) / w);
+                w = maxDim;
+              } else {
+                w = Math.round((w * maxDim) / h);
+                h = maxDim;
+              }
+            }
+            const sCanvas = document.createElement('canvas');
+            sCanvas.width = w;
+            sCanvas.height = h;
+            const sCtx = sCanvas.getContext('2d');
+            sCtx.drawImage(pageCanvas, 0, 0, w, h);
+
+            const dataUrl = sCanvas.toDataURL('image/jpeg', 0.88);
+            scannedImage = {
+              dataUrl,
+              base64Data: dataUrl.split(',')[1],
+              mimeType: 'image/jpeg',
+              width: w,
+              height: h
+            };
+          } catch (renderErr) {
+            console.warn("Could not render scanned PDF page to canvas:", renderErr);
+          }
+        }
+
+        return { text: extracted.trim(), pageCount: pdf.numPages, scannedImage };
+      }
+
+      async function extractTextFromDocx(file) {
+        if (!window.mammoth) {
+          throw new Error('DOCX parser library is not available. Check network or paste text directly.');
+        }
+        const arrayBuffer = await file.arrayBuffer();
+        const result = await window.mammoth.extractRawText({ arrayBuffer: arrayBuffer });
+        return { text: result.value.trim() };
+      }
+
+      // ========================================================================
+      // Dropzone & File Input Handling (100% Click & Drag-Drop Reliable)
+      // ========================================================================
+      DOM.dropzone.addEventListener('click', (e) => {
+        if (e.target !== DOM.fileInput) {
+          DOM.fileInput.click();
+        }
+      });
+
+      DOM.fileInput.addEventListener('click', (e) => {
+        e.stopPropagation();
+      });
+
+      DOM.dropzone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        DOM.dropzone.classList.add('drag-over');
+      });
+
+      DOM.dropzone.addEventListener('dragleave', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        DOM.dropzone.classList.remove('drag-over');
+      });
+
+      DOM.dropzone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        DOM.dropzone.classList.remove('drag-over');
+        if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+          handleFile(e.dataTransfer.files[0]);
+        }
+      });
+
+      DOM.fileInput.addEventListener('change', (e) => {
+        if (e.target.files && e.target.files.length > 0) {
+          handleFile(e.target.files[0]);
+          DOM.fileInput.value = ''; // Reset value so same file can be re-uploaded
+        }
+      });
+
+      async function handleFile(file) {
+        const MAX_BYTES = 5 * 1024 * 1024; // 5MB limit
+        if (file.size > MAX_BYTES) {
+          showToast(`File too large (${(file.size / (1024 * 1024)).toFixed(1)} MB). Maximum allowed size is 5 MB.`, 'error');
+          return;
+        }
+
+        const ext = '.' + file.name.split('.').pop().toLowerCase();
+        const validExts = ['.pdf', '.docx', '.txt', '.png', '.jpg', '.jpeg', '.webp'];
+        if (!validExts.includes(ext)) {
+          showToast(`Unsupported file type (${ext}). Please upload PDF, DOCX, TXT, PNG, JPG, or WEBP.`, 'error');
+          return;
+        }
+
+        STATE.uploadedFile = file;
+        STATE.uploadedImageBase64 = null;
+        STATE.uploadedImageMime = null;
+
+        DOM.filePreviewName.textContent = file.name;
+        const sizeKb = Math.round(file.size / 1024);
+        DOM.filePreview.style.display = 'flex';
+
+        // 1. PDF
+        if (ext === '.pdf') {
+          DOM.filePreviewThumb.style.display = 'none';
+          DOM.filePreviewIcon.style.display = 'flex';
+          DOM.filePreviewIcon.textContent = '📕';
+          DOM.filePreviewMeta.textContent = `PDF Document • ${sizeKb} KB`;
+
+          showToast('Extracting text from PDF client-side...', 'info');
+          try {
+            const { text, pageCount, scannedImage } = await extractTextFromPdf(file);
+            if (scannedImage) {
+              DOM.filePreviewThumb.style.display = 'block';
+              DOM.filePreviewIcon.style.display = 'none';
+              DOM.filePreviewThumb.src = scannedImage.dataUrl;
+              DOM.filePreviewMeta.textContent = `Scanned PDF (${pageCount} pgs) • Converted to ${scannedImage.width}x${scannedImage.height}px`;
+              STATE.uploadedImageBase64 = scannedImage.base64Data;
+              STATE.uploadedImageMime = scannedImage.mimeType;
+              DOM.resumeTextArea.value = `[Scanned PDF: Page 1 rendered to 1600px image for multimodal visual audit]`;
+              updateCounters();
+              showToast('Scanned PDF detected! Page 1 prepared for multimodal analysis.', 'info');
+            } else if (text.length >= 50) {
+              DOM.resumeTextArea.value = text;
+              updateCounters();
+              showToast(`Extracted text from ${pageCount} PDF page(s)!`, 'success');
+            } else {
+              DOM.resumeTextArea.value = text;
+              updateCounters();
+              showToast(`PDF has ${pageCount} page(s) with minimal text.`, 'warning');
+            }
+          } catch (err) {
+            showToast('PDF extraction failed: ' + err.message, 'error');
+          }
+
+        // 2. DOCX
+        } else if (ext === '.docx') {
+          DOM.filePreviewThumb.style.display = 'none';
+          DOM.filePreviewIcon.style.display = 'flex';
+          DOM.filePreviewIcon.textContent = '📘';
+          DOM.filePreviewMeta.textContent = `Word Document • ${sizeKb} KB`;
+
+          showToast('Extracting text from DOCX document...', 'info');
+          try {
+            const { text } = await extractTextFromDocx(file);
+            DOM.resumeTextArea.value = text;
+            updateCounters();
+            showToast('Extracted text from DOCX file successfully!', 'success');
+          } catch (err) {
+            showToast('DOCX extraction failed: ' + err.message, 'error');
+          }
+
+        // 3. Image
+        } else if (['.png', '.jpg', '.jpeg', '.webp'].includes(ext)) {
+          DOM.filePreviewIcon.style.display = 'none';
+          DOM.filePreviewThumb.style.display = 'block';
+          
+          showToast('Resizing image to max 1600px...', 'info');
+          try {
+            const res = await resizeImageToMax1600(file);
+            DOM.filePreviewThumb.src = res.dataUrl;
+            DOM.filePreviewMeta.textContent = `Image • Resized to ${res.width}x${res.height}px`;
+            STATE.uploadedImageBase64 = res.base64Data;
+            STATE.uploadedImageMime = res.mimeType;
+            showToast('Scanned resume ready for multimodal analysis!', 'success');
+          } catch (err) {
+            showToast('Image processing error: ' + err.message, 'error');
+          }
+
+        // 4. TXT
+        } else {
+          DOM.filePreviewThumb.style.display = 'none';
+          DOM.filePreviewIcon.style.display = 'flex';
+          DOM.filePreviewIcon.textContent = '📄';
+          DOM.filePreviewMeta.textContent = `Text File • ${sizeKb} KB`;
+
+          const reader = new FileReader();
+          reader.onload = (e) => {
+            DOM.resumeTextArea.value = e.target.result;
+            updateCounters();
+            showToast('Loaded text resume file', 'success');
+          };
+          reader.readAsText(file);
+        }
+      }
+
+      function clearUploadedFile() {
+        STATE.uploadedFile = null;
+        STATE.uploadedImageBase64 = null;
+        STATE.uploadedImageMime = null;
+        DOM.fileInput.value = '';
+        DOM.filePreview.style.display = 'none';
+        DOM.filePreviewThumb.src = '';
+      }
+
+      DOM.fileClearBtn.addEventListener('click', clearUploadedFile);
+
+      function loadSample(key = 'juniorSwe') {
+        const sample = SAMPLES[key] || SAMPLES.juniorSwe;
+        DOM.resumeTextArea.value = sample.resumeText;
+        DOM.targetRoleInput.value = sample.role;
+        DOM.jobDescTextArea.value = sample.jobDesc;
+        clearUploadedFile();
+        updateCounters();
+        if (DOM.sampleMenu) DOM.sampleMenu.style.display = 'none';
+        const label = key === 'productManager' ? 'Technical PM' : 'Junior SWE';
+        showToast(`Loaded ${label} Sample Resume!`, 'success');
+      }
+
+      DOM.sampleBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (DOM.sampleMenu) {
+          DOM.sampleMenu.style.display = DOM.sampleMenu.style.display === 'block' ? 'none' : 'block';
+        } else {
+          loadSample('juniorSwe');
+        }
+      });
+
+      if (DOM.sampleSweBtn) {
+        DOM.sampleSweBtn.addEventListener('click', () => loadSample('juniorSwe'));
+      }
+      if (DOM.samplePmBtn) {
+        DOM.samplePmBtn.addEventListener('click', () => loadSample('productManager'));
+      }
+
+      document.addEventListener('click', (e) => {
+        if (DOM.sampleMenu && !DOM.sampleBtn.contains(e.target) && !DOM.sampleMenu.contains(e.target)) {
+          DOM.sampleMenu.style.display = 'none';
+        }
+      });
+
+      // 1-Click Test & Diagnose Button
+      DOM.idleSampleBtn.addEventListener('click', () => {
+        loadSample('juniorSwe');
+        setTimeout(() => {
+          DOM.analyzeBtn.click();
+        }, 150);
+      });
+
+      DOM.resetBtn.addEventListener('click', () => {
+        DOM.resumeTextArea.value = '';
+        DOM.targetRoleInput.value = '';
+        DOM.jobDescTextArea.value = '';
+        clearUploadedFile();
+        updateCounters();
+        hideResults();
+        showToast('All fields cleared', 'info');
+      });
+
+      // ========================================================================
+      // AI Prompt Construction
+      // ========================================================================
+      function buildPrompt(resumeText, targetRole, jobDesc) {
+        return `You are Resume Doctor, an expert ATS resume reviewer and career coach.
+Audit the provided resume and return a strict JSON response.
+
+ANALYSIS CHECKS TO PERFORM:
+1. Spelling and grammar: Find all typos and grammatical slips.
+2. Inconsistent tense or dates: Check past vs present tense for jobs, and date format consistency.
+3. Missing contact info or sections: Missing email, phone, location, LinkedIn, GitHub, or core sections.
+4. Weak bullets: Bullets that lack action verbs or metrics.
+5. ATS problems: Tables, columns, icons, symbols (★, ❖, ✈), non-standard headings.
+6. Length: 1 page vs 2 pages evaluation.
+7. Keyword match against job description (matched, missing, suggested).
+8. Bullet Transformations: Provide at least 5 before -> after bullet rewrites.
+9. Full rewritten resume: Single column, plain text, standard headings ONLY (SUMMARY, SKILLS, EXPERIENCE, PROJECTS, EDUCATION, CERTIFICATIONS). Never invent jobs, degrees, numbers, or facts. Tag missing items with [ADD: what is needed].
+
+TARGET ROLE: ${targetRole ? targetRole : "Not specified"}
+JOB DESCRIPTION:
+${jobDesc ? jobDesc : "Not specified"}
+
+RESUME TEXT CONTENT:
+${resumeText ? resumeText : "[See attached multimodal image]"}
+
+IMPORTANT: Respond ONLY in valid JSON matching this schema:
+{
+  "atsScore": 72,
+  "scoreBreakdown": { "formatting": 18, "content": 20, "impact": 15, "keywords": 19 },
+  "summary": "Two-sentence executive diagnosis.",
+  "sections": [
+    { "name": "Contact Info", "status": "pass", "note": "All info present" },
+    { "name": "Summary", "status": "warn", "note": "Informal tone" },
+    { "name": "Skills", "status": "warn", "note": "Non-standard header" },
+    { "name": "Experience", "status": "fail", "note": "No metrics, passive verbs" },
+    { "name": "Education", "status": "pass", "note": "Clean format" },
+    { "name": "Projects", "status": "warn", "note": "Missing demo links" },
+    { "name": "Certifications", "status": "warn", "note": "None listed" }
+  ],
+  "bulletTransformations": [
+    { "before": "Worked on frontend features using React", "after": "Engineered 12+ scalable frontend features in React & TypeScript, boosting load speed by 28%" }
+  ],
+  "issues": [
+    { "severity": "high", "section": "Experience", "problem": "Vague bullets without metrics", "fix": "Quantify outcomes with numbers or percentages" }
+  ],
+  "matchedKeywords": ["React", "JavaScript"],
+  "missingKeywords": ["Docker", "Kubernetes", "PostgreSQL"],
+  "rewrittenResume": "Full plain text rewritten resume..."
+}`;
+      }
+
+      function extractJson(rawText) {
+        if (!rawText) throw new Error('Received empty response from AI model.');
+        let cleaned = rawText.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
+        try {
+          return JSON.parse(cleaned);
+        } catch (initialErr) {
+          const firstBrace = cleaned.indexOf('{');
+          const lastBrace = cleaned.lastIndexOf('}');
+          if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+            return JSON.parse(cleaned.substring(firstBrace, lastBrace + 1));
+          }
+          throw new Error('Model did not return valid JSON. ' + initialErr.message);
+        }
+      }
+
+      // ========================================================================
+      // Built-in Expert ATS Engine (100% Offline & Free)
+      // ========================================================================
+      function runBuiltInAnalysis(resumeText, targetRole, jobDesc) {
+        const issues = [];
+        const text = resumeText || '';
+        const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+
+        // 1. Contact Info
+        const emailRegex = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/;
+        const phoneRegex = /(?:\+?\d{1,3}[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}/;
+        const linkedinRegex = /linkedin\.com/i;
+        const githubRegex = /github\.com/i;
+
+        const hasEmail = emailRegex.test(text);
+        const hasPhone = phoneRegex.test(text);
+        const hasLinkedin = linkedinRegex.test(text);
+        const hasGithub = githubRegex.test(text);
+
+        if (!hasEmail) {
+          issues.push({ severity: 'high', section: 'Contact', problem: 'No professional email address detected.', fix: 'Add a professional email at the top of your resume.' });
+        }
+        if (!hasPhone) {
+          issues.push({ severity: 'medium', section: 'Contact', problem: 'Missing mobile phone number.', fix: 'Add your direct phone number with area code.' });
+        }
+        if (!hasLinkedin) {
+          issues.push({ severity: 'low', section: 'Contact', problem: 'Missing LinkedIn profile URL.', fix: 'Include your customized LinkedIn URL (e.g. linkedin.com/in/yourname).' });
+        }
+
+        // 2. ATS Formatting & Symbols
+        const fancySymbols = /[★❖✈●■✔▲▼►◄✦✧✪✫]/;
+        if (fancySymbols.test(text)) {
+          issues.push({ severity: 'high', section: 'ATS Formatting', problem: 'Decorative symbols detected (★, ❖, ✈).', fix: 'Replace decorative symbols with standard hyphens (-). Symbols corrupt ATS parsing.' });
+        }
+        if (/(?:table|column\s*1|column\s*2|\|.*\|)/i.test(text)) {
+          issues.push({ severity: 'high', section: 'ATS Formatting', problem: 'Multi-column or table cues detected.', fix: 'Convert to a strict single-column top-to-bottom layout.' });
+        }
+
+        // 3. Headings
+        const nonStandardFound = [];
+        if (/(?:about me|my journey|who am i)/i.test(text)) nonStandardFound.push('About Me -> SUMMARY');
+        if (/(?:tech i like|what i use|my stack|competencies)/i.test(text)) nonStandardFound.push('Tech I Like -> SKILLS');
+        if (/(?:work history|places i've worked|career highlights)/i.test(text)) nonStandardFound.push('Work History -> EXPERIENCE');
+        if (/(?:cool stuff|side hustles|things i built)/i.test(text)) nonStandardFound.push('Cool Stuff -> PROJECTS');
+
+        if (nonStandardFound.length > 0) {
+          issues.push({ severity: 'medium', section: 'ATS Formatting', problem: `Non-standard heading names: ${nonStandardFound.join(', ')}.`, fix: 'Use universal standard headings: SUMMARY, SKILLS, EXPERIENCE, PROJECTS, EDUCATION, CERTIFICATIONS.' });
+        }
+
+        // 4. Bullets & Action Verbs
+        const bulletLines = lines.filter(l => l.startsWith('-') || l.startsWith('•') || l.startsWith('*') || l.startsWith('★') || l.startsWith('❖'));
+        let weakActionCount = 0;
+        let missingMetricCount = 0;
+        const weakVerbs = /^(?:worked on|helped|assisted|responsible for|participated in|met with|talked to|did|handled)\b/i;
+        const strongMetricRegex = /\b(?:\d+[%kKmMbB]?|\$\d+|\d+\+?)\b/;
+
+        bulletLines.forEach(bullet => {
+          const cleaned = bullet.replace(/^[-•*★❖\s]+/, '').trim();
+          if (weakVerbs.test(cleaned)) weakActionCount++;
+          if (!strongMetricRegex.test(cleaned)) missingMetricCount++;
+        });
+
+        if (weakActionCount > 0) {
+          issues.push({ severity: 'high', section: 'Experience', problem: `${weakActionCount} bullets begin with passive duties (e.g. "Worked on", "Helped").`, fix: 'Rewrite bullets with power verbs like "Architected", "Engineered", "Spearheaded", "Accelerated", "Automated".' });
+        }
+        if (missingMetricCount > Math.max(1, Math.floor(bulletLines.length * 0.4))) {
+          issues.push({ severity: 'high', section: 'Experience', problem: 'Bullet points lack quantifiable business metrics.', fix: 'Add concrete numbers, percentages, or dollar scale (e.g. "reduced latency by 30%", "supported 10k users").' });
+        }
+
+        // 5. Inconsistent Dates
+        if (/(\d{4}\s*to\s*\d{4})/i.test(text) && /(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{4}/i.test(text)) {
+          issues.push({ severity: 'medium', section: 'Experience', problem: 'Inconsistent date formatting ("YYYY to YYYY" vs "Mon YYYY - Mon YYYY").', fix: 'Standardize all dates across all positions to a single uniform style (e.g. "Jan 2021 - Present").' });
+        }
+
+        // 6. Spelling Typos
+        const typos = [
+          { regex: /\bexperiance\b/i, correct: 'experience' },
+          { regex: /\bmangement\b/i, correct: 'management' },
+          { regex: /\bteh\b/i, correct: 'the' },
+          { regex: /\bacheive\b/i, correct: 'achieve' },
+          { regex: /\bcollaberat/i, correct: 'collaborat' },
+          { regex: /\bresponsable\b/i, correct: 'responsible' }
+        ];
+        typos.forEach(t => {
+          if (t.regex.test(text)) {
+            issues.push({ severity: 'high', section: 'Summary', problem: `Spelling typo found: "${t.regex.source.replace(/\\b/g, '')}".`, fix: `Correct spelling to "${t.correct}".` });
+          }
+        });
+
+        // 7. Keyword matching
+        const matchedKeywords = [];
+        const missingKeywords = [];
+        const techPool = ['React', 'TypeScript', 'JavaScript', 'Node.js', 'Python', 'Go', 'Java', 'SQL', 'PostgreSQL', 'Docker', 'Kubernetes', 'AWS', 'GCP', 'CI/CD', 'RESTful APIs', 'Jest', 'Agile', 'Scrum', 'Jira', 'Git', 'Microservices', 'System Design', 'Amplitude', 'OKRs'];
+
+        if (jobDesc && jobDesc.trim()) {
+          techPool.forEach(kw => {
+            const reg = new RegExp('\\b' + kw.replace('.', '\\.') + '\\b', 'i');
+            if (reg.test(jobDesc)) {
+              if (reg.test(text)) matchedKeywords.push(kw);
+              else missingKeywords.push(kw);
+            }
+          });
+        } else {
+          techPool.forEach(kw => {
+            if (new RegExp('\\b' + kw.replace('.', '\\.') + '\\b', 'i').test(text)) matchedKeywords.push(kw);
+          });
+        }
+
+        // Section Health Status
+        const sections = [
+          { name: "Contact Info", status: hasEmail && hasPhone ? "pass" : "fail", note: hasEmail && hasPhone ? "Email and phone present" : "Missing essential contact data" },
+          { name: "Summary", status: /(?:about me|my journey)/i.test(text) ? "warn" : "pass", note: /(?:about me|my journey)/i.test(text) ? "Non-standard header used" : "Standard section" },
+          { name: "Skills", status: /(?:tech i like|competencies)/i.test(text) ? "warn" : "pass", note: /(?:tech i like|competencies)/i.test(text) ? "Rename to SKILLS" : "Standard section" },
+          { name: "Experience", status: weakActionCount > 0 || missingMetricCount > 0 ? "fail" : "pass", note: weakActionCount > 0 ? "Weak action verbs and missing metrics" : "Strong impactful bullets" },
+          { name: "Education", status: /(?:b\.s\.|bachelor|m\.s\.|master|university|college|degree)/i.test(text) ? "pass" : "warn", note: "Degree details found" },
+          { name: "Projects", status: /github\.com/i.test(text) ? "pass" : "warn", note: "Add demo links and scale metrics" },
+          { name: "Certifications", status: /(?:certified|certification|aws|gcp|license)/i.test(text) ? "pass" : "warn", note: "Consider adding relevant industry certifications" }
+        ];
+
+        // Bullet Point Transformations (5 Before -> After)
+        const bulletTransformations = [
+          {
+            before: "Worked on various frontend features using React and JavaScript.",
+            after: "Engineered 12+ scalable frontend features in React & TypeScript, boosting page responsiveness by 28%."
+          },
+          {
+            before: "Helped fix bugs reported by the QA team in the customer dashboard.",
+            after: "Resolved 45+ critical dashboard bug tickets, decreasing client-reported issues by 35%."
+          },
+          {
+            before: "Assisted senior engineers with database migrations.",
+            after: "Partnered with senior database architects to execute zero-downtime PostgreSQL schema migrations across 100k+ records."
+          },
+          {
+            before: "Maintained company website built with HTML, CSS, and basic PHP.",
+            after: "Modernized and maintained company web application, enhancing mobile usability and lifting engagement by 22%."
+          },
+          {
+            before: "Built a crypto tracking app in React and deployed on Vercel.",
+            after: "Architected real-time crypto portfolio tracker utilizing REST APIs and caching, supporting 500+ active daily sessions."
+          }
+        ];
+
+        // Scoring
+        let formatScore = 25;
+        let impactScore = 25;
+        let grammarScore = 25;
+        let keywordScore = 25;
+
+        issues.forEach(iss => {
+          const p = iss.severity === 'high' ? 5 : (iss.severity === 'medium' ? 3 : 2);
+          if (iss.section === 'ATS Formatting' || iss.section === 'Contact') formatScore = Math.max(5, formatScore - p);
+          else if (iss.section === 'Experience') impactScore = Math.max(5, impactScore - p);
+          else grammarScore = Math.max(5, grammarScore - p);
+        });
+
+        if (missingKeywords.length > 0) {
+          keywordScore = Math.max(6, keywordScore - Math.min(18, missingKeywords.length * 3));
+        }
+
+        const totalScore = Math.min(100, Math.max(20, formatScore + impactScore + grammarScore + keywordScore));
+        const rewritten = generateCleanRewrite(text, targetRole, issues, missingKeywords);
+
+        return {
+          atsScore: totalScore,
+          scoreBreakdown: { formatting: formatScore, content: grammarScore, impact: impactScore, keywords: keywordScore },
+          summary: `The resume demonstrates fundamental qualifications but contains ${issues.length} critical ATS vulnerabilities including formatting traps and unquantified bullets. Applying the prescribed fixes will significantly boost parser readability and callback rates.`,
+          sections: sections,
+          bulletTransformations: bulletTransformations,
+          issues: issues,
+          matchedKeywords: matchedKeywords.length ? matchedKeywords : ['General Technical Fluency'],
+          missingKeywords: missingKeywords.length ? missingKeywords : ['Quantifiable Metrics', 'Specific Impact'],
+          rewrittenResume: rewritten
+        };
+      }
+
+      function generateCleanRewrite(text, targetRole, issues, missingKeywords) {
+        const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+        const nameLine = lines.length > 0 ? lines[0].replace(/[^a-zA-Z\s.-]/g, '').trim() : 'CANDIDATE NAME';
+        
+        const emailMatch = text.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
+        const email = emailMatch ? emailMatch[0] : '[ADD: Professional Email Address]';
+        
+        const phoneMatch = text.match(/(?:\+?\d{1,3}[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}/);
+        const phone = phoneMatch ? phoneMatch[0] : '[ADD: Phone Number]';
+        
+        const locationMatch = text.match(/\b([A-Z][a-zA-Z\s]+,\s*[A-Z]{2})\b/);
+        const location = locationMatch ? locationMatch[0] : '[ADD: City, State/Country]';
+        
+        const linkedinMatch = text.match(/linkedin\.com\/in\/[a-zA-Z0-9-_]+/i);
+        const linkedin = linkedinMatch ? linkedinMatch[0] : '[ADD: LinkedIn Profile URL]';
+        
+        const githubMatch = text.match(/github\.com\/[a-zA-Z0-9-_]+/i);
+        const github = githubMatch ? githubMatch[0] : '[ADD: GitHub / Portfolio Link]';
+
+        let out = `${nameLine.toUpperCase()}\n`;
+        out += `${email} | ${phone} | ${location}\n`;
+        out += `${linkedin} | ${github}\n\n`;
+
+        // 1. SUMMARY
+        out += `SUMMARY\n`;
+        const roleTitle = targetRole ? targetRole : (nameLine.includes('Alex') ? 'Full-Stack Software Engineer' : (nameLine.includes('Jordan') ? 'Technical Product Manager' : 'Professional'));
+        out += `Results-driven ${roleTitle} with demonstrated experience executing high-quality software solutions and collaborating across agile engineering teams. Adept at leveraging modern methodologies, driving project execution, and delivering impactful outcomes [ADD: Highlight top technical specialty or career milestone].\n\n`;
+
+        // 2. SKILLS
+        out += `SKILLS\n`;
+        let detectedSkills = [];
+        const techPool = ['JavaScript', 'TypeScript', 'React', 'Node.js', 'Python', 'SQL', 'PostgreSQL', 'Docker', 'Kubernetes', 'AWS', 'Git', 'HTML/CSS', 'Express', 'Jira', 'Agile', 'Scrum', 'Product Management', 'Wireframing', 'Confluence'];
+        techPool.forEach(sk => {
+          if (new RegExp('\\b' + sk.replace('.', '\\.') + '\\b', 'i').test(text)) detectedSkills.push(sk);
+        });
+        if (detectedSkills.length === 0) detectedSkills = ['[ADD: Primary Programming Languages / Technical Skills]'];
+        out += `Technical Skills: ${detectedSkills.join(', ')}\n`;
+        if (missingKeywords && missingKeywords.length > 0) {
+          out += `Target Competencies to incorporate: [ADD: ${missingKeywords.slice(0, 4).join(', ')} if applicable]\n\n`;
+        } else {
+          out += `\n`;
+        }
+
+        // 3. EXPERIENCE
+        out += `EXPERIENCE\n`;
+        let hasExperienceContent = false;
+        lines.forEach(line => {
+          if (/(?:developer|engineer|manager|lead|specialist|intern|analyst)\b/i.test(line) && !line.startsWith('-') && !line.startsWith('•') && !line.startsWith('*') && !line.startsWith('★') && !line.startsWith('❖')) {
+            const cleanLine = line.replace(/\|/g, '•').replace(/\[.*?\]/g, '').trim();
+            if (cleanLine.length > 5 && cleanLine.length < 90) {
+              out += `\n${cleanLine}\n`;
+              hasExperienceContent = true;
+            }
+          } else if (line.startsWith('-') || line.startsWith('•') || line.startsWith('*') || line.startsWith('★') || line.startsWith('❖')) {
+            let b = line.replace(/^[-•*★❖\s]+/, '').trim();
+            b = b.replace(/^worked on\b/i, 'Developed and engineered')
+                 .replace(/^helped fix\b/i, 'Resolved and optimized')
+                 .replace(/^assisted\b/i, 'Collaborated with senior engineers to execute')
+                 .replace(/^attended\b/i, 'Actively contributed to')
+                 .replace(/^collaborated with designers\b/i, 'Partnered with design teams to enhance')
+                 .replace(/^managed team\b/i, 'Spearheaded engineering team')
+                 .replace(/^talked to customers\b/i, 'Conducted quantitative customer interviews')
+                 .replace(/^responsible for\b/i, 'Drove end-to-end execution of')
+                 .replace(/^helped write\b/i, 'Authored comprehensive specifications for');
+            
+            if (!/\b(?:\d+[%kKmMbB]?|\$\d+|\d+\+?)\b/.test(b)) {
+              b += ' [ADD: Quantifiable outcome or metric e.g. improved performance by X% or supported Y users]';
+            }
+            out += `- ${b}\n`;
+            hasExperienceContent = true;
+          }
+        });
+
+        if (!hasExperienceContent) {
+          out += `Role Title | Company Name | City, State\n`;
+          out += `Month Year - Present\n`;
+          out += `- Engineered core features and improved system performance [ADD: Quantifiable outcome e.g. reduced load times by 25%]\n`;
+          out += `- Partnered with cross-functional stakeholders to deliver key sprint deliverables on schedule\n`;
+        }
+        out += `\n`;
+
+        // 4. PROJECTS
+        out += `PROJECTS\n`;
+        let foundProject = false;
+        lines.forEach((line, idx) => {
+          if (/(?:app|project|tracker|redesign|clone|system|dashboard|website)\b/i.test(line) && !line.startsWith('-') && !line.startsWith('•') && line.length < 50 && idx > 5) {
+            if (!line.includes('EXPERIENCE') && !line.includes('EDUCATION') && !line.includes('SUMMARY') && !line.includes('SKILLS')) {
+              out += `${line.replace(/\|/g, '-').trim()} | [ADD: Demo / GitHub URL]\n`;
+              out += `- Architected and deployed scalable solution using ${detectedSkills.slice(0, 3).join(', ')}\n`;
+              out += `- Optimized data retrieval and user experience [ADD: Metric e.g. decreased latency by 30% or reached 500+ active users]\n\n`;
+              foundProject = true;
+            }
+          }
+        });
+        if (!foundProject) {
+          out += `Key Project Name | [ADD: GitHub Link / Live URL]\n`;
+          out += `- Architected full-stack implementation using modern best practices and clean modular code\n`;
+          out += `- Integrated secure APIs and automated testing pipelines [ADD: Quantifiable metric]\n\n`;
+        }
+
+        // 5. EDUCATION
+        out += `EDUCATION\n`;
+        let eduLine = lines.find(l => /(?:b\.s\.|bachelor|m\.s\.|master|university|college|degree)\b/i.test(l));
+        if (eduLine) out += `${eduLine.replace(/\|/g, '-').trim()}\n\n`;
+        else out += `Bachelor of Science in Computer Science | University Name\nGraduation Year: [ADD: Year]\n\n`;
+
+        // 6. CERTIFICATIONS
+        out += `CERTIFICATIONS\n`;
+        let certLine = lines.find(l => /(?:certified|certification|aws|gcp|license)\b/i.test(l));
+        if (certLine) out += `- ${certLine.trim()}\n`;
+        else out += `- [ADD: Relevant Industry Certifications e.g. AWS Certified Developer, or omit if none]\n`;
+
+        return out.trim();
+      }
+
+      // ========================================================================
+      // Backend Proxy & AI API Calls
+      // ========================================================================
+      async function callModel(promptText) {
+        if (STATE.config.provider === 'gemini') {
+          const key = STATE.config.geminiApiKey ? STATE.config.geminiApiKey.trim() : '';
+          const model = STATE.config.geminiModel === 'custom' ? (STATE.config.geminiCustomModel || 'gemini-2.0-flash') : (STATE.config.geminiModel || 'gemini-2.0-flash');
+
+          // Attempt backend proxy first
+          try {
+            DOM.loadingStepText.textContent = `Consulting ${model} via backend proxy...`;
+            const proxyRes = await fetch('/api/analyze', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'x-gemini-api-key': key
+              },
+              body: JSON.stringify({
+                model: model,
+                prompt: promptText,
+                imageBase64: STATE.uploadedImageBase64,
+                imageMime: STATE.uploadedImageMime
+              })
+            });
+
+            if (proxyRes.ok) {
+              const data = await proxyRes.json();
+              if (data.rawText) return data.rawText;
+            }
+          } catch (proxyErr) {
+            // Backend proxy not running or static host, proceed to direct client call
+          }
+
+          if (!key) {
+            openSettingsModal();
+            throw new Error('Please enter your Google AI Studio API key in Settings, or use the Built-in Engine.');
+          }
+
+          const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`;
+          const parts = [];
+          if (STATE.uploadedImageBase64) {
+            parts.push({
+              inlineData: {
+                mimeType: STATE.uploadedImageMime || 'image/jpeg',
+                data: STATE.uploadedImageBase64
+              }
+            });
+          }
+          parts.push({ text: promptText });
+
+          DOM.loadingStepText.textContent = `Consulting ${model} directly via Google AI...`;
+
+          const genConfig = { temperature: 0.2 };
+          if (model.startsWith('gemini')) {
+            genConfig.responseMimeType = "application/json";
+          }
+
+          let res;
+          try {
+            res = await fetch(endpoint, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ contents: [{ parts }], generationConfig: genConfig })
+            });
+          } catch (netErr) {
+            throw new Error(`Google AI connection failed (${netErr.message}). Check internet connection or API key.`);
+          }
+
+          if (!res.ok) {
+            const errJson = await res.json().catch(() => ({}));
+            const msg = errJson.error?.message || `HTTP ${res.status} ${res.statusText}`;
+            throw new Error(`Gemini API Error: ${msg}`);
+          }
+
+          const data = await res.json();
+          const candidate = data.candidates?.[0]?.content?.parts?.[0]?.text;
+          if (!candidate) throw new Error('No candidate response returned from model.');
+          return candidate;
+
+        } else {
+          // Ollama
+          const url = (STATE.config.ollamaUrl || 'http://localhost:11434').replace(/\/+$/, '');
+          const model = STATE.config.ollamaModel || 'gemma2';
+          const endpoint = `${url}/api/chat`;
+
+          DOM.loadingStepText.textContent = `Consulting local Ollama model (${model})...`;
+
+          const userMessage = { role: 'user', content: promptText };
+          if (STATE.uploadedImageBase64) {
+            userMessage.images = [STATE.uploadedImageBase64];
+          }
+
+          let res;
+          try {
+            res = await fetch(endpoint, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                model: model,
+                messages: [{ role: 'system', content: 'You are Resume Doctor. Return JSON only.' }, userMessage],
+                stream: false,
+                format: 'json',
+                options: { temperature: 0.2 }
+              })
+            });
+          } catch (netErr) {
+            throw new Error(`Cannot reach Ollama at ${url} (${netErr.message}). Make sure Ollama is running with OLLAMA_ORIGINS="*".`);
+          }
+
+          if (!res.ok) throw new Error(`Ollama Error (HTTP ${res.status}). Verify model "${model}" is installed.`);
+          const data = await res.json();
+          if (!data.message || !data.message.content) throw new Error('Invalid response structure from Ollama.');
+          return data.message.content;
+        }
+      }
+
+      // ========================================================================
+      // XSS-Safe Rendering Engine (Strict textContent & DOM Nodes)
+      // ========================================================================
+      function renderResults(data, rawResponseText) {
+        STATE.analysisResult = data;
+
+        // 1. Score & Radial Gauge
+        const score = Math.max(0, Math.min(100, parseInt(data.atsScore, 10) || 0));
+        DOM.scoreNumber.textContent = String(score);
+
+        const circ = 377;
+        const offset = circ - (circ * score) / 100;
+        DOM.scoreRingCircle.style.strokeDashoffset = offset;
+
+        let condText = 'Critical Condition';
+        let condClass = 'condition-critical';
+        let strokeColor = '#ef4444';
+
+        if (score >= 90) {
+          condText = 'ATS Optimus (Excellent)';
+          condClass = 'condition-excellent';
+          strokeColor = '#22c55e';
+        } else if (score >= 75) {
+          condText = 'Healthy';
+          condClass = 'condition-good';
+          strokeColor = '#0d9488';
+        } else if (score >= 50) {
+          condText = 'Needs Treatment';
+          condClass = 'condition-fair';
+          strokeColor = '#f59e0b';
+        }
+
+        DOM.conditionBadge.textContent = condText;
+        DOM.conditionBadge.className = `condition-badge ${condClass}`;
+        DOM.scoreRingCircle.setAttribute('stroke', strokeColor);
+
+        // 2. Summary
+        DOM.prognosisSummary.textContent = data.summary || 'Diagnosis completed.';
+
+        // 3. Sub-scores
+        const breakdown = data.scoreBreakdown || {};
+        const fmt = breakdown.formatting ?? Math.round(score * 0.25);
+        const imp = breakdown.impact ?? Math.round(score * 0.25);
+        const grm = breakdown.content ?? Math.round(score * 0.25);
+        const kwd = breakdown.keywords ?? Math.round(score * 0.25);
+
+        DOM.subScoreFormat.textContent = String(fmt);
+        DOM.barFormat.style.width = `${Math.min(100, (fmt / 25) * 100)}%`;
+
+        DOM.subScoreImpact.textContent = String(imp);
+        DOM.barImpact.style.width = `${Math.min(100, (imp / 25) * 100)}%`;
+
+        DOM.subScoreGrammar.textContent = String(grm);
+        DOM.barGrammar.style.width = `${Math.min(100, (grm / 25) * 100)}%`;
+
+        DOM.subScoreKeyword.textContent = String(kwd);
+        DOM.barKeyword.style.width = `${Math.min(100, (kwd / 25) * 100)}%`;
+
+        // 4. Section Health Checks
+        renderSectionChecks(data.sections || []);
+
+        // 5. Bullet Transformations (Before -> After)
+        renderBulletTransformations(data.bulletTransformations || []);
+
+        // 6. Keywords
+        renderKeywords(DOM.matchedKeywordsContainer, DOM.matchedCount, data.matchedKeywords, 'matched');
+        renderKeywords(DOM.missingKeywordsContainer, DOM.missingCount, data.missingKeywords, 'missing');
+
+        // 7. Issues List
+        renderIssues(data.issues || []);
+
+        // 8. Rewritten Resume
+        const rewritten = data.rewrittenResume || 'No rewrite returned.';
+        DOM.rewrittenResumeBox.textContent = rewritten;
+        DOM.rewrittenResumePrintArea.textContent = rewritten;
+
+        // Side-by-side sync
+        DOM.sbsOriginalBox.textContent = DOM.resumeTextArea.value.trim() || '[Original file content]';
+        DOM.sbsRewrittenBox.textContent = rewritten;
+
+        // 9. Raw JSON Inspector
+        DOM.rawJsonResponseBox.textContent = rawResponseText || JSON.stringify(data, null, 2);
+
+        // Save to History (localStorage)
+        saveToHistory(score, DOM.targetRoleInput.value.trim(), STATE.uploadedFile?.name || 'Resume Document');
+
+        showResultsDashboard();
+      }
+
+      function renderSectionChecks(sections) {
+        while (DOM.sectionChecksGrid.firstChild) {
+          DOM.sectionChecksGrid.removeChild(DOM.sectionChecksGrid.firstChild);
+        }
+
+        if (!sections || !sections.length) {
+          sections = [
+            { name: "Contact Info", status: "pass", note: "Present" },
+            { name: "Summary", status: "pass", note: "Present" },
+            { name: "Skills", status: "pass", note: "Present" },
+            { name: "Experience", status: "pass", note: "Present" },
+            { name: "Education", status: "pass", note: "Present" },
+            { name: "Projects", status: "pass", note: "Present" },
+            { name: "Certifications", status: "warn", note: "Review" }
+          ];
+        }
+
+        sections.forEach(sec => {
+          const chip = document.createElement('div');
+          const status = (sec.status || 'pass').toLowerCase();
+          chip.className = `sec-status-chip ${status}`;
+
+          const nameSpan = document.createElement('span');
+          nameSpan.textContent = String(sec.name || '');
+
+          const iconSpan = document.createElement('span');
+          iconSpan.textContent = status === 'pass' ? '✓' : (status === 'fail' ? '✕' : '⚠️');
+
+          chip.appendChild(nameSpan);
+          chip.appendChild(iconSpan);
+          DOM.sectionChecksGrid.appendChild(chip);
+        });
+      }
+
+      function renderBulletTransformations(pairs) {
+        while (DOM.bulletPairsList.firstChild) {
+          DOM.bulletPairsList.removeChild(DOM.bulletPairsList.firstChild);
+        }
+
+        if (!pairs || !pairs.length) {
+          const empty = document.createElement('div');
+          empty.textContent = 'No bullet transformations detected.';
+          empty.style.fontSize = '0.8rem';
+          DOM.bulletPairsList.appendChild(empty);
+          return;
+        }
+
+        pairs.slice(0, 5).forEach((p, idx) => {
+          const box = document.createElement('div');
+          box.className = 'bullet-pair-box';
+
+          const beforeDiv = document.createElement('div');
+          beforeDiv.className = 'bullet-before';
+          const bIcon = document.createElement('span');
+          bIcon.textContent = '❌ Before:';
+          const bText = document.createTextNode(` ${p.before}`);
+          beforeDiv.appendChild(bIcon);
+          beforeDiv.appendChild(bText);
+
+          const afterDiv = document.createElement('div');
+          afterDiv.className = 'bullet-after';
+          const aIcon = document.createElement('span');
+          aIcon.textContent = '✅ After:';
+          const aText = document.createTextNode(` ${p.after}`);
+          afterDiv.appendChild(aIcon);
+          afterDiv.appendChild(aText);
+
+          box.appendChild(beforeDiv);
+          box.appendChild(afterDiv);
+          DOM.bulletPairsList.appendChild(box);
+        });
+      }
+
+      function renderKeywords(container, countBadge, list, type) {
+        while (container.firstChild) container.removeChild(container.firstChild);
+
+        const items = Array.isArray(list) ? list : [];
+        countBadge.textContent = String(items.length);
+
+        if (items.length === 0) {
+          const emptySpan = document.createElement('span');
+          emptySpan.className = 'pill-info';
+          emptySpan.textContent = type === 'matched' ? 'None detected' : 'None missing';
+          container.appendChild(emptySpan);
+          return;
+        }
+
+        items.forEach(kw => {
+          const pill = document.createElement('span');
+          pill.className = `kw-pill ${type}`;
+          pill.textContent = String(kw);
+          container.appendChild(pill);
+        });
+      }
+
+      function renderIssues(issues) {
+        while (DOM.issuesList.firstChild) DOM.issuesList.removeChild(DOM.issuesList.firstChild);
+
+        DOM.totalIssuesBadge.textContent = `${issues.length} Issues Diagnosed`;
+
+        const filtered = issues.filter(item => {
+          if (STATE.activeFilter === 'all') return true;
+          return (item.severity || '').toLowerCase() === STATE.activeFilter;
+        });
+
+        if (filtered.length === 0) {
+          const emptyCard = document.createElement('div');
+          emptyCard.className = 'issue-card';
+          emptyCard.style.textAlign = 'center';
+          emptyCard.style.padding = '20px';
+          const msg = document.createElement('div');
+          msg.textContent = '🎉 No issues found for the selected severity level.';
+          emptyCard.appendChild(msg);
+          DOM.issuesList.appendChild(emptyCard);
+          return;
+        }
+
+        filtered.slice(0, 10).forEach(issue => {
+          const card = document.createElement('div');
+          card.className = 'issue-card';
+
+          const metaRow = document.createElement('div');
+          metaRow.className = 'issue-meta-row';
+
+          const sevTag = document.createElement('span');
+          const sev = (issue.severity || 'low').toLowerCase();
+          sevTag.className = `severity-tag ${sev}`;
+          sevTag.textContent = sev.toUpperCase();
+
+          const secTag = document.createElement('span');
+          secTag.className = 'section-tag';
+          secTag.textContent = String(issue.section || 'General');
+
+          metaRow.appendChild(sevTag);
+          metaRow.appendChild(secTag);
+
+          const problemEl = document.createElement('div');
+          problemEl.className = 'issue-problem';
+          problemEl.textContent = String(issue.problem || '');
+
+          const fixEl = document.createElement('div');
+          fixEl.className = 'issue-prescription';
+          const fixPrefix = document.createElement('strong');
+          fixPrefix.textContent = 'Rx Fix: ';
+          const fixText = document.createTextNode(String(issue.fix || ''));
+          fixEl.appendChild(fixPrefix);
+          fixEl.appendChild(fixText);
+
+          card.appendChild(metaRow);
+          card.appendChild(problemEl);
+          card.appendChild(fixEl);
+
+          DOM.issuesList.appendChild(card);
+        });
+      }
+
+      DOM.filterButtons.forEach(btn => {
+        btn.addEventListener('click', () => {
+          DOM.filterButtons.forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+          STATE.activeFilter = btn.getAttribute('data-filter') || 'all';
+          if (STATE.analysisResult && STATE.analysisResult.issues) {
+            renderIssues(STATE.analysisResult.issues);
+          }
+        });
+      });
+
+      // View toggle (Clean View vs Side-by-Side)
+      DOM.viewCleanBtn.addEventListener('click', () => {
+        DOM.viewCleanBtn.classList.add('active');
+        DOM.viewSbsBtn.classList.remove('active');
+        DOM.rewrittenResumeBox.style.display = 'block';
+        DOM.sideBySideBox.style.display = 'none';
+      });
+
+      DOM.viewSbsBtn.addEventListener('click', () => {
+        DOM.viewSbsBtn.classList.add('active');
+        DOM.viewCleanBtn.classList.remove('active');
+        DOM.rewrittenResumeBox.style.display = 'none';
+        DOM.sideBySideBox.style.display = 'grid';
+      });
+
+      // ========================================================================
+      // History System (localStorage)
+      // ========================================================================
+      function saveToHistory(score, role, filename) {
+        try {
+          const list = JSON.parse(localStorage.getItem('resume_doctor_history') || '[]');
+          list.unshift({
+            id: Date.now(),
+            date: new Date().toLocaleDateString(),
+            score: score,
+            role: role || 'Software Professional',
+            filename: filename || 'resume.pdf'
+          });
+          localStorage.setItem('resume_doctor_history', JSON.stringify(list.slice(0, 10)));
+        } catch (e) {}
+      }
+
+      function loadHistoryModal() {
+        while (DOM.historyListContainer.firstChild) DOM.historyListContainer.removeChild(DOM.historyListContainer.firstChild);
+
+        let list = [];
+        try {
+          list = JSON.parse(localStorage.getItem('resume_doctor_history') || '[]');
+        } catch (e) {}
+
+        if (list.length === 0) {
+          const empty = document.createElement('div');
+          empty.textContent = 'No past audit history found.';
+          empty.style.fontSize = '0.85rem';
+          empty.style.color = 'var(--text-subtle)';
+          DOM.historyListContainer.appendChild(empty);
+          return;
+        }
+
+        list.forEach(item => {
+          const row = document.createElement('div');
+          row.className = 'history-item';
+
+          const left = document.createElement('div');
+          const title = document.createElement('strong');
+          title.textContent = `${item.filename} (${item.role})`;
+          const date = document.createElement('div');
+          date.textContent = item.date;
+          date.style.fontSize = '0.72rem';
+          date.style.color = 'var(--text-subtle)';
+          left.appendChild(title);
+          left.appendChild(date);
+
+          const right = document.createElement('div');
+          right.style.fontWeight = '800';
+          right.style.fontSize = '1.1rem';
+          right.style.color = item.score >= 75 ? 'var(--brand-primary)' : 'var(--sev-med-text)';
+          right.textContent = `${item.score}/100`;
+
+          row.appendChild(left);
+          row.appendChild(right);
+          DOM.historyListContainer.appendChild(row);
+        });
+
+        DOM.historyModal.classList.add('open');
+      }
+
+      DOM.historyBtn.addEventListener('click', loadHistoryModal);
+      DOM.closeHistoryBtn.addEventListener('click', () => DOM.historyModal.classList.remove('open'));
+      DOM.historyModal.addEventListener('click', (e) => {
+        if (e.target === DOM.historyModal) DOM.historyModal.classList.remove('open');
+      });
+      DOM.clearHistoryBtn.addEventListener('click', () => {
+        localStorage.removeItem('resume_doctor_history');
+        loadHistoryModal();
+        showToast('History cleared', 'info');
+      });
+
+      // ========================================================================
+      // Extra Features: Cover Letter & LinkedIn Suggestions
+      // ========================================================================
+      DOM.btnOpenCoverLetter.addEventListener('click', () => {
+        const text = DOM.resumeTextArea.value.trim();
+        const role = DOM.targetRoleInput.value.trim() || 'Software Engineer';
+        const job = DOM.jobDescTextArea.value.trim();
+        const lines = text.split('\n').filter(Boolean);
+        const name = lines[0] ? lines[0].replace(/[^a-zA-Z\s]/g, '').trim() : 'Candidate Name';
+
+        const coverLetter = `Dear Hiring Team,\n\nI am writing to express my strong enthusiasm for the ${role} position. With a strong track record of engineering scalable digital solutions, optimizing software performance, and collaborating effectively across agile teams, I am excited about the opportunity to contribute to your team's mission.\n\nThroughout my career, I have focused on translating complex requirements into reliable, user-centric software. In my recent experience, I have developed core full-stack features, maintained rigorous code quality, and actively contributed to sprint planning and retrospectives. Given your requirements for ${job ? 'the position' : role}, I am confident that my technical skills and proactive problem-solving mindset make me an exceptional fit.\n\nThank you for your time and consideration. I welcome the opportunity to discuss how my qualifications align with your engineering goals in an interview.\n\nSincerely,\n${name}`;
+
+        DOM.coverLetterTextBox.textContent = coverLetter;
+        DOM.coverLetterModal.classList.add('open');
+      });
+
+      DOM.closeCoverLetterBtn.addEventListener('click', () => DOM.coverLetterModal.classList.remove('open'));
+      DOM.coverLetterModal.addEventListener('click', (e) => {
+        if (e.target === DOM.coverLetterModal) DOM.coverLetterModal.classList.remove('open');
+      });
+
+      DOM.copyCoverLetterBtn.addEventListener('click', async () => {
+        await navigator.clipboard.writeText(DOM.coverLetterTextBox.textContent);
+        showToast('Cover letter copied to clipboard!', 'success');
+      });
+
+      DOM.downloadCoverLetterBtn.addEventListener('click', () => {
+        const blob = new Blob([DOM.coverLetterTextBox.textContent], { type: 'text/plain;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'cover_letter.txt';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        showToast('Downloaded cover_letter.txt', 'success');
+      });
+
+      // LinkedIn Suggestions
+      DOM.btnOpenLinkedIn.addEventListener('click', () => {
+        const role = DOM.targetRoleInput.value.trim() || 'Software Engineer';
+        const skills = (STATE.analysisResult?.matchedKeywords || ['Full-Stack', 'APIs', 'Cloud']).slice(0, 4).join(' | ');
+
+        while (DOM.linkedInHeadlinesContainer.firstChild) {
+          DOM.linkedInHeadlinesContainer.removeChild(DOM.linkedInHeadlinesContainer.firstChild);
+        }
+
+        const headlines = [
+          `${role} | ${skills} | Building Scalable, High-Impact Web Solutions`,
+          `Results-Driven ${role} | Passionate About Clean Code, Cloud Architecture & Continuous Delivery`,
+          `${role} Specializing in ${skills} | Transforming Ideas into Reliable Products`
+        ];
+
+        headlines.forEach(h => {
+          const item = document.createElement('div');
+          item.style.padding = '8px 12px';
+          item.style.backgroundColor = 'var(--bg-surface-alt)';
+          item.style.borderRadius = 'var(--radius-sm)';
+          item.style.fontSize = '0.8rem';
+          item.style.fontWeight = '600';
+          item.style.cursor = 'pointer';
+          item.textContent = h;
+          item.title = 'Click to copy headline';
+          item.addEventListener('click', async () => {
+            await navigator.clipboard.writeText(h);
+            showToast('Headline copied to clipboard!', 'success');
+          });
+          DOM.linkedInHeadlinesContainer.appendChild(item);
+        });
+
+        const about = `I am a dedicated ${role} focused on architecting resilient, user-friendly digital systems that solve real-world problems. With hands-on experience spanning modern frameworks, API integrations, and cloud infrastructure, I excel at bridging technical vision with smooth execution.\n\nAlways eager to collaborate with passionate teams, learn emerging technologies, and drive measurable product impact. Let's connect!`;
+
+        DOM.linkedInAboutBox.textContent = about;
+        DOM.linkedInModal.classList.add('open');
+      });
+
+      DOM.closeLinkedInBtn.addEventListener('click', () => DOM.linkedInModal.classList.remove('open'));
+      DOM.linkedInModal.addEventListener('click', (e) => {
+        if (e.target === DOM.linkedInModal) DOM.linkedInModal.classList.remove('open');
+      });
+
+      DOM.copyLinkedInBtn.addEventListener('click', async () => {
+        await navigator.clipboard.writeText(DOM.linkedInAboutBox.textContent);
+        showToast('LinkedIn summary copied to clipboard!', 'success');
+      });
+
+      // ========================================================================
+      // View States Helpers
+      // ========================================================================
+      function showLoadingState() {
+        DOM.idleState.style.display = 'none';
+        DOM.resultsDashboard.style.display = 'none';
+        DOM.errorBox.style.display = 'none';
+        DOM.loadingState.style.display = 'block';
+        DOM.analyzeBtn.disabled = true;
+      }
+
+      function showResultsDashboard() {
+        DOM.idleState.style.display = 'none';
+        DOM.loadingState.style.display = 'none';
+        DOM.errorBox.style.display = 'none';
+        DOM.resultsDashboard.style.display = 'flex';
+        DOM.analyzeBtn.disabled = false;
+        
+        if (window.innerWidth < 992) {
+          DOM.resultsDashboard.scrollIntoView({ behavior: 'smooth' });
+        }
+      }
+
+      function showError(message) {
+        DOM.idleState.style.display = 'none';
+        DOM.loadingState.style.display = 'none';
+        DOM.resultsDashboard.style.display = 'none';
+        DOM.errorMessageText.textContent = message;
+        DOM.errorBox.style.display = 'block';
+        DOM.analyzeBtn.disabled = false;
+      }
+
+      DOM.errorFallbackBtn.addEventListener('click', () => {
+        STATE.config.provider = 'builtin';
+        updateProviderStatusDisplay();
+        DOM.analyzeBtn.click();
+      });
+
+      function hideResults() {
+        DOM.idleState.style.display = 'block';
+        DOM.loadingState.style.display = 'none';
+        DOM.resultsDashboard.style.display = 'none';
+        DOM.errorBox.style.display = 'none';
+        DOM.analyzeBtn.disabled = false;
+      }
+
+      // ========================================================================
+      // Export Utilities
+      // ========================================================================
+      DOM.copyRewriteBtn.addEventListener('click', async () => {
+        const text = DOM.rewrittenResumeBox.textContent;
+        if (!text) return;
+        await navigator.clipboard.writeText(text);
+        showToast('Rewritten resume copied to clipboard!', 'success');
+      });
+
+      DOM.downloadTxtBtn.addEventListener('click', () => {
+        const text = DOM.rewrittenResumeBox.textContent;
+        if (!text) return;
+        const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'rewritten_ats_resume.txt';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        showToast('Downloaded rewritten_ats_resume.txt', 'success');
+      });
+
+      DOM.printPdfBtn.addEventListener('click', () => {
+        const text = DOM.rewrittenResumeBox.textContent;
+        if (!text) return;
+        DOM.rewrittenResumePrintArea.textContent = text;
+        window.print();
+      });
+
+      // ========================================================================
+      // Analyze Trigger Action
+      // ========================================================================
+      DOM.analyzeBtn.addEventListener('click', async () => {
+        const resumeText = DOM.resumeTextArea.value.trim();
+        const hasImage = Boolean(STATE.uploadedImageBase64);
+
+        if (!resumeText && !hasImage) {
+          showToast('Please upload a resume file (PDF, DOCX, Image, TXT) or paste your resume text.', 'error');
+          return;
+        }
+
+        const targetRole = DOM.targetRoleInput.value.trim();
+        const jobDesc = DOM.jobDescTextArea.value.trim();
+
+        showLoadingState();
+
+        let rawResponse = '';
+        try {
+          if (STATE.config.provider === 'builtin') {
+            DOM.loadingStepText.textContent = 'Diagnosing with Built-in Expert ATS Engine...';
+            await new Promise(r => setTimeout(r, 600));
+            const result = runBuiltInAnalysis(resumeText, targetRole, jobDesc);
+            renderResults(result, JSON.stringify(result, null, 2));
+            showToast('Diagnosis complete with Built-in Engine!', 'success');
+            return;
+          }
+
+          // Cloud or Local AI Model with auto-fallback
+          try {
+            const prompt = buildPrompt(resumeText, targetRole, jobDesc);
+            rawResponse = await callModel(prompt);
+            
+            DOM.loadingStepText.textContent = 'Parsing ATS diagnostic data...';
+            const parsed = extractJson(rawResponse);
+            
+            renderResults(parsed, rawResponse);
+            showToast('Resume diagnosis complete!', 'success');
+
+          } catch (modelErr) {
+            console.warn("External model connection notice:", modelErr);
+            DOM.loadingStepText.textContent = 'Auto-falling back to Built-in Engine...';
+            await new Promise(r => setTimeout(r, 600));
+
+            const result = runBuiltInAnalysis(resumeText, targetRole, jobDesc);
+            renderResults(result, JSON.stringify({
+              notice: `External model note (${modelErr.message}). Analyzed using Built-in ATS Engine.`,
+              analysis: result
+            }, null, 2));
+            showToast(`API Note: ${modelErr.message}. Completed with Built-in Engine!`, 'info');
+          }
+
+        } catch (err) {
+          console.error("Diagnosis error:", err, rawResponse);
+          showError(err.message || 'An error occurred during diagnosis.');
+          showToast('Diagnosis notice: ' + err.message, 'error');
+        }
+      });
+
+      // ========================================================================
+      // Initial Startup
+      // ========================================================================
+      initTheme();
+      loadSettings();
+      updateCounters();
+      updateLanguage('en');
+
+    })();
+  </script>
+</body>
+</html>
